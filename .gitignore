@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.sqlite
+*.db
+.env
+.env.*
+!.env.example
+# .kiro/ must never be ignored (required by the hackathon rules)
