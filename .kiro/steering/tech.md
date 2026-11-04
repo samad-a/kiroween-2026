@@ -25,5 +25,8 @@ Monorepo:
 - Message types live in `shared/` only.
 - Server is authoritative: clients send intents (target position), never positions.
 - Movement: click-to-walk and WASD/arrows, both send a target.
-- Commands (run from repo root; on Windows PowerShell use `npm.cmd`): `npm run typecheck` (tsc -b), `npm test` (vitest --run).
+- Commands (run from repo root; on Windows PowerShell use `npm.cmd`): `npm run typecheck` (tsc -b), `npm test` (vitest --run), `npm run build` (client).
+- Dev: `npm run dev:server` (ws://localhost:2567) and `npm run dev:client` (http://localhost:5173), in separate terminals.
+- Browser check: with both dev servers running, `node node_modules/tsx/dist/cli.mjs scripts/two-tabs.ts` (screenshots to `screenshots/`). `scripts/smoke.ts` does the same over the network only.
+- Colyseus is 0.18: client package is `@colyseus/sdk`, state uses the `schema({...})` + `t.*` builder (no decorators). Sync positions as `t.float64()`; `t.number()` is float32.
 - Secret scan: `node scripts/secret-scan.mjs` checks staged files. Runs from a Kiro hook and the git pre-commit hook.

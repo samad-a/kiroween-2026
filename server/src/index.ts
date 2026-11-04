@@ -1,3 +1,7 @@
-import { MAX_GHOSTS_PER_PLAZA } from "@club-kiro/shared";
+import { listen } from "colyseus";
+import { DEFAULT_SERVER_PORT } from "@club-kiro/shared";
+import { createServer } from "./app.js";
 
-console.log(`Club Kiro server (plaza capacity ${MAX_GHOSTS_PER_PLAZA})`);
+const port = Number(process.env.PORT) || DEFAULT_SERVER_PORT;
+await listen(createServer(), port);
+console.log(`Club Kiro server listening on ws://localhost:${port}`);

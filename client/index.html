@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Club Kiro</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div id="game" aria-label="Haunted town plaza"></div>
+
+      <section id="join" class="panel parchment" aria-labelledby="join-title">
+        <h1 id="join-title">Club Kiro</h1>
+        <p class="tagline">A cosy haunted town. Float in and say boo.</p>
+        <form id="join-form" novalidate>
+          <label for="name-input">Ghost name</label>
+          <div class="row">
+            <input id="name-input" name="name" maxlength="16" autocomplete="off" required />
+            <button type="button" id="random-name" class="secondary">Random</button>
+          </div>
+          <p id="name-error" class="error" role="alert" hidden>Use 1 to 16 letters, numbers, spaces, - ' or _.</p>
+
+          <fieldset>
+            <legend>Colour</legend>
+            <div id="colour-options" class="swatches"></div>
+          </fieldset>
+
+          <button type="submit" id="join-button">Float in</button>
+          <p id="join-status" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <p id="help" class="hint" hidden>Click to float there, or use WASD / arrow keys.</p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Tests on save (shared + server)",
+      "trigger": "PostFileSave",
+      "description": "Runs unit and property-based tests whenever a TypeScript file in shared/ or server/ is saved.",
+      "matcher": "(shared|server)[\\\\/].*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "npm.cmd test",
+        "timeout": 120
+      }
+    }
+  ]
+}

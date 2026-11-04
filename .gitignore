@@ -3,6 +3,9 @@ dist/
 *.tsbuildinfo
 *.sqlite
 *.db
+check.log
+smoke.log
+tmp_*
 .env
 .env.*
 !.env.example

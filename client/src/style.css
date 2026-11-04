@@ -1,0 +1,139 @@
+:root {
+  --night: #1a1033;
+  --night-deep: #0f0a22;
+  --glow: #ffcf7a;
+  --parchment: #f3e6c8;
+  --ink: #2b1d0e;
+  --accent: #6b3fa0;
+  --error: #8a1c1c;
+  color-scheme: dark;
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(ellipse at top, var(--night), var(--night-deep));
+  color: #f4f1ff;
+}
+
+#app {
+  position: relative;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+#game {
+  width: 100%;
+  height: 100%;
+}
+
+.panel {
+  position: absolute;
+  width: min(92vw, 380px);
+  padding: 1.5rem;
+  border-radius: 14px;
+  box-shadow: 0 0 40px rgba(255, 207, 122, 0.25);
+}
+
+.parchment {
+  background: var(--parchment);
+  color: var(--ink);
+  border: 3px solid #c9b48a;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.tagline { margin: 0 0 1rem; }
+
+label, legend { font-weight: bold; }
+
+.row { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+
+input {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem;
+  border: 2px solid #8c7a55;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: var(--ink);
+}
+
+button {
+  font: inherit;
+  font-weight: bold;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.secondary { background: #4a3a63; }
+button:disabled { opacity: 0.6; cursor: wait; }
+
+:focus-visible {
+  outline: 3px solid var(--glow);
+  outline-offset: 2px;
+}
+
+fieldset {
+  border: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.swatches { display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
+
+.swatches label {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #8c7a55;
+  cursor: pointer;
+}
+
+.swatches input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.swatches label:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+.swatches label:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+#join-button { width: 100%; }
+
+.error { color: var(--error); margin: 0.4rem 0 0; font-size: 0.9rem; }
+.status { min-height: 1.2em; margin: 0.5rem 0 0; font-size: 0.9rem; }
+
+.hint {
+  position: absolute;
+  bottom: 1rem;
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  background: rgba(15, 10, 34, 0.8);
+  color: #f4f1ff;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
