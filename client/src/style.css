@@ -137,3 +137,51 @@ fieldset {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+#chat {
+  position: absolute;
+  bottom: 3.2rem;
+  width: min(92vw, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+#chat-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#chat-input {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+  border: 2px solid #6b3fa0;
+  border-radius: 10px;
+  background: rgba(243, 230, 200, 0.95);
+  color: var(--ink);
+}
+
+#chat-form button {
+  border-radius: 10px;
+}
+
+.caretaker-note,
+.resting {
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.caretaker-note {
+  background: rgba(107, 63, 160, 0.92);
+  color: #fff;
+  border: 1px solid var(--glow);
+}
+
+.resting {
+  background: rgba(15, 10, 34, 0.85);
+  color: var(--glow);
+}

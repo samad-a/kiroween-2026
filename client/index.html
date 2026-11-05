@@ -33,6 +33,16 @@
       </section>
 
       <p id="help" class="hint" hidden>Click to float there, or use WASD / arrow keys.</p>
+
+      <div id="chat" hidden>
+        <p id="caretaker-resting" class="resting" role="status" hidden>🕯️ The Caretaker is resting. Chat is quietly watched.</p>
+        <p id="caretaker-note" class="caretaker-note" role="alert" hidden></p>
+        <form id="chat-form">
+          <label for="chat-input" class="sr-only">Say something</label>
+          <input id="chat-input" maxlength="120" autocomplete="off" placeholder="Say something kind…" />
+          <button type="submit">Send</button>
+        </form>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

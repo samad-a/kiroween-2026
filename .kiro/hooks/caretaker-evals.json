@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Caretaker evals on prompt change",
+      "trigger": "PostFileSave",
+      "description": "Re-runs the Caretaker eval set and prints the score whenever the prompt changes.",
+      "matcher": "caretaker[\\\\/]prompt\\.md$",
+      "action": {
+        "type": "command",
+        "command": "npm.cmd run evals",
+        "timeout": 120
+      }
+    }
+  ]
+}

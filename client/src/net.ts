@@ -1,5 +1,15 @@
 import { Client, type Room } from "@colyseus/sdk";
-import { DEFAULT_SERVER_PORT, MESSAGE, PLAZA_ROOM, type JoinOptions, type MoveMessage } from "@club-kiro/shared";
+import {
+  CHAT_ROOM_MESSAGE,
+  DEFAULT_SERVER_PORT,
+  MESSAGE,
+  PLAZA_ROOM,
+  type CaretakerNote,
+  type ChatBroadcast,
+  type ChatMessage,
+  type JoinOptions,
+  type MoveMessage,
+} from "@club-kiro/shared";
 
 /** The synced shape the client reads. Mirrors server/src/state.ts. */
 export interface GhostView {
@@ -7,10 +17,13 @@ export interface GhostView {
   colour: number;
   x: number;
   y: number;
+  bubble: string;
+  bubbleUntil: number;
 }
 
 export interface PlazaView {
   ghosts: { forEach(cb: (ghost: GhostView, id: string) => void): void; get(id: string): GhostView | undefined };
+  caretakerResting: boolean;
 }
 
 export type PlazaRoom = Room<unknown, PlazaView>;
@@ -30,4 +43,19 @@ export async function joinPlaza(options: JoinOptions): Promise<PlazaRoom> {
 
 export function sendMove(room: PlazaRoom, target: MoveMessage): void {
   room.send(MESSAGE.move, target);
+}
+
+export function sendChat(room: PlazaRoom, text: string): void {
+  const message: ChatMessage = { text };
+  room.send(CHAT_ROOM_MESSAGE.chat, message);
+}
+
+/** Private, in-character notes from the Caretaker to this player only. */
+export function onCaretakerNote(room: PlazaRoom, handler: (note: CaretakerNote) => void): void {
+  room.onMessage(CHAT_ROOM_MESSAGE.caretaker, handler);
+}
+
+/** Allowed chat messages broadcast to everyone. */
+export function onChat(room: PlazaRoom, handler: (msg: ChatBroadcast) => void): void {
+  room.onMessage(CHAT_ROOM_MESSAGE.chat, handler);
 }

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GHOST_COLOURS, PLAZA_HEIGHT, PLAZA_WIDTH, cleanName, randomName } from "@club-kiro/shared";
-import { joinPlaza } from "./net";
+import { joinPlaza, onCaretakerNote, sendChat, type PlazaRoom } from "./net";
 import { PlazaScene } from "./scenes/PlazaScene";
 
 const COLOUR_NAMES = ["Moonlight", "Lavender", "Mint", "Pumpkin", "Rose", "Sky"];
@@ -54,7 +54,9 @@ form.addEventListener("submit", async (event) => {
     const room = await joinPlaza({ name, colour });
     $("join").hidden = true;
     $("help").hidden = false;
+    $("chat").hidden = false;
     startGame(room);
+    wireChat(room);
   } catch (error) {
     console.error(error);
     status.textContent = "The plaza gates are stuck. Is the server running? Try again in a moment.";
@@ -74,4 +76,39 @@ function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
   game.scene.add("plaza", PlazaScene, true, { room });
   game.canvas.setAttribute("tabindex", "0");
   game.canvas.focus();
+}
+
+function wireChat(room: PlazaRoom) {
+  const chatForm = $<HTMLFormElement>("chat-form");
+  const chatInput = $<HTMLInputElement>("chat-input");
+  const note = $<HTMLParagraphElement>("caretaker-note");
+  const resting = $<HTMLParagraphElement>("caretaker-resting");
+
+  chatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    sendChat(room, text);
+    chatInput.value = "";
+  });
+
+  // The Caretaker's private nudges and blocks, shown only to this player.
+  let noteTimer = 0;
+  onCaretakerNote(room, (n) => {
+    note.textContent = (n.kind === "block" ? "🕯️ " : "👻 ") + n.text;
+    note.hidden = false;
+    window.clearTimeout(noteTimer);
+    noteTimer = window.setTimeout(() => (note.hidden = true), 6000);
+  });
+
+  // "Caretaker is resting" banner follows the synced state. Polling is simplest
+  // and avoids the SDK's generic state-callback typing; the value changes rarely.
+  let lastResting: boolean | undefined;
+  window.setInterval(() => {
+    const value = room.state.caretakerResting === true;
+    if (value !== lastResting) {
+      lastResting = value;
+      resting.hidden = !value;
+    }
+  }, 1000);
 }

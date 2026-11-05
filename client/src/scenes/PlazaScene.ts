@@ -11,6 +11,9 @@ const KEY_SEND_MS = 100;
 interface GhostSprite {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Image;
+  bubble: Phaser.GameObjects.Container;
+  bubbleText: Phaser.GameObjects.Text;
+  shownBubble: string;
 }
 
 export class PlazaScene extends Phaser.Scene {
@@ -38,7 +41,10 @@ export class PlazaScene extends Phaser.Scene {
     this.add.image(0, 0, "plaza").setOrigin(0, 0);
     this.addLanternGlows();
 
+    // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input).
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      const el = document.elementFromPoint(pointer.x, pointer.y);
+      if (el && el.closest("#chat")) return;
       sendMove(this.room, { x: pointer.worldX, y: pointer.worldY });
     });
 
@@ -68,6 +74,7 @@ export class PlazaScene extends Phaser.Scene {
       c.x += (ghost.x - c.x) * k;
       c.y += (ghost.y - c.y) * k;
       c.setDepth(c.y); // ghosts lower on screen draw in front
+      this.updateBubble(sprite, ghost.bubble);
     });
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
@@ -88,15 +95,39 @@ export class PlazaScene extends Phaser.Scene {
         padding: { x: 6, y: 2 },
       })
       .setOrigin(0.5, 1);
-    const container = this.add.container(ghost.x, ghost.y, [body, label]).setAlpha(0);
+    const bubbleText = this.add
+      .text(0, 0, "", {
+        fontFamily: "Trebuchet MS, sans-serif",
+        fontSize: "15px",
+        color: "#2b1d0e",
+        backgroundColor: "#f3e6c8",
+        padding: { x: 8, y: 5 },
+        align: "center",
+        wordWrap: { width: 180 },
+      })
+      .setOrigin(0.5, 1);
+    const bubble = this.add.container(0, -64, [bubbleText]).setVisible(false);
+
+    const container = this.add.container(ghost.x, ghost.y, [body, label, bubble]).setAlpha(0);
 
     this.tweens.add({ targets: container, alpha: 1, duration: this.reducedMotion ? 0 : 600 });
     if (!this.reducedMotion) {
       this.tweens.add({ targets: body, y: -6, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
-    const sprite = { container, body };
+    const sprite: GhostSprite = { container, body, bubble, bubbleText, shownBubble: "" };
     this.sprites.set(id, sprite);
     return sprite;
+  }
+
+  private updateBubble(sprite: GhostSprite, text: string) {
+    if (text === sprite.shownBubble) return;
+    sprite.shownBubble = text;
+    if (text) {
+      sprite.bubbleText.setText(text);
+      sprite.bubble.setVisible(true).setDepth(100000);
+    } else {
+      sprite.bubble.setVisible(false);
+    }
   }
 
   private handleKeys(time: number) {
