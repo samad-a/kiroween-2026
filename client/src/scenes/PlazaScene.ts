@@ -1,6 +1,17 @@
 import Phaser from "phaser";
-import { PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
-import { LANTERNS, ghostTextureKey, ghostTextures, hatTextureKey, hatTextures, plazaSvg, svgUrl } from "../art";
+import { OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
+import {
+  LANTERNS,
+  caretakerSvg,
+  ghostTextureKey,
+  ghostTextures,
+  hatTextureKey,
+  hatTextures,
+  plazaSvg,
+  svgUrl,
+  vignetteSvg,
+} from "../art";
+import { Bubble, glowTexture, groundShadow, nameTag } from "../ghostParts";
 import { sendMove, type GhostView, type PlazaRoom } from "../net";
 import { reduceMotion } from "../settings";
 
@@ -9,13 +20,26 @@ const SMOOTHING = 12;
 /** Minimum gap between keyboard move messages. */
 const KEY_SEND_MS = 100;
 
+const FOUNTAIN = OBSTACLES[0]!;
+const FOUNTAIN_X = FOUNTAIN.x + FOUNTAIN.width / 2;
+const FOUNTAIN_Y = FOUNTAIN.y + FOUNTAIN.height / 2;
+
+/** Friendly tips the Caretaker offers now and then. Purely client-side flavour. */
+const CARETAKER_TIPS = [
+  "Float to the fountain to fish for coins, little one.",
+  "Click another ghost to drop in on their room.",
+  "The shop has hats. A ghost should look their best.",
+  "Kind words keep the lanterns bright.",
+];
+const TIP_EVERY_MS = 40_000;
+const BUBBLE_MS = 7_000;
+
 interface GhostSprite {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Image;
   hat: Phaser.GameObjects.Image;
   shownHat: string;
-  bubble: Phaser.GameObjects.Container;
-  bubbleText: Phaser.GameObjects.Text;
+  bubble: Bubble;
   shownBubble: string;
 }
 
@@ -27,8 +51,14 @@ export class PlazaScene extends Phaser.Scene {
   private wasKeyMoving = false;
   private reducedMotion = reduceMotion();
   private hauntingOverlay!: Phaser.GameObjects.Rectangle;
-  private hauntingGlows: Phaser.GameObjects.Arc[] = [];
+  private hauntingGlows: Phaser.GameObjects.Image[] = [];
   private onVisit?: (ownerPlayerId: number, name: string) => void;
+  private caretaker!: Phaser.GameObjects.Container;
+  private caretakerBubble!: Bubble;
+  private caretakerAngle = 0.6;
+  private bubbleTimer?: Phaser.Time.TimerEvent;
+  private greeted = false;
+  private wasHaunting = false;
 
   constructor() {
     super("plaza");
@@ -41,6 +71,8 @@ export class PlazaScene extends Phaser.Scene {
 
   preload() {
     this.load.svg("plaza", svgUrl(plazaSvg()), { width: PLAZA_WIDTH, height: PLAZA_HEIGHT });
+    this.load.svg("vignette", svgUrl(vignetteSvg()), { width: PLAZA_WIDTH, height: PLAZA_HEIGHT });
+    this.load.svg("caretaker", svgUrl(caretakerSvg()), { width: 104, height: 112 });
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
   }
@@ -48,6 +80,9 @@ export class PlazaScene extends Phaser.Scene {
   create() {
     this.add.image(0, 0, "plaza").setOrigin(0, 0);
     this.addLanternGlows();
+    this.addAmbience();
+    this.addCaretaker();
+    this.add.image(0, 0, "vignette").setOrigin(0, 0).setDepth(150000);
     this.addHauntingOverlay();
 
     // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input),
@@ -66,6 +101,8 @@ export class PlazaScene extends Phaser.Scene {
       w: kb.addKey(K.W), a: kb.addKey(K.A), s: kb.addKey(K.S), d: kb.addKey(K.D),
     };
 
+    this.time.addEvent({ delay: TIP_EVERY_MS, loop: true, callback: () => this.caretakerSay(Phaser.Utils.Array.GetRandom(CARETAKER_TIPS)) });
+
     this.room.onLeave(() => this.scene.pause());
   }
 
@@ -73,6 +110,105 @@ export class PlazaScene extends Phaser.Scene {
     this.syncSprites(deltaMs / 1000);
     this.handleKeys(time);
     this.syncHaunting();
+    this.driftCaretaker(deltaMs / 1000);
+  }
+
+  // --- The Caretaker: a visible, client-side NPC that greets and gives tips ---
+
+  private addCaretaker() {
+    const glow = this.add.image(0, 0, glowTexture(this)).setTint(0x7fe0c8).setAlpha(0.3).setScale(1.5).setBlendMode(Phaser.BlendModes.ADD);
+    const body = this.add.image(0, 0, "caretaker").setAlpha(0.95);
+    const tag = nameTag(this, "The Caretaker", "#7fe0c8", -60, true);
+    this.caretakerBubble = new Bubble(this, -78);
+    this.caretaker = this.add.container(0, 0, [groundShadow(this, 58, 56), glow, body, tag, this.caretakerBubble.container]);
+    this.placeCaretaker();
+    if (!this.reducedMotion) {
+      this.tweens.add({ targets: [body, glow], y: "-=8", duration: 1800, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
+  }
+
+  /** A slow loop around the fountain; stays put under reduced motion. */
+  private placeCaretaker() {
+    const a = this.caretakerAngle;
+    this.caretaker.setPosition(FOUNTAIN_X + Math.cos(a) * 330, FOUNTAIN_Y + 40 + Math.sin(a) * 180);
+    this.caretaker.setDepth(this.caretaker.y);
+  }
+
+  private driftCaretaker(dt: number) {
+    if (this.reducedMotion) return;
+    this.caretakerAngle += dt * 0.045;
+    this.placeCaretaker();
+  }
+
+  private caretakerSay(text: string) {
+    this.caretakerBubble.set(text);
+    this.bubbleTimer?.remove();
+    this.bubbleTimer = this.time.delayedCall(BUBBLE_MS, () => this.caretakerBubble.set(""));
+  }
+
+  // --- Ambience ---
+
+  private addLanternGlows() {
+    const key = glowTexture(this);
+    for (const l of LANTERNS) {
+      // A warm pool of light on the ground, then the lamp's own glow.
+      this.add.image(l.x, l.y + 88, key).setTint(0xffcf7a).setAlpha(0.22).setScale(2.4, 0.8).setBlendMode(Phaser.BlendModes.ADD);
+      const glow = this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0.5).setScale(1.3).setBlendMode(Phaser.BlendModes.ADD);
+      if (this.reducedMotion) continue;
+      this.tweens.add({
+        targets: glow,
+        alpha: { from: 0.38, to: 0.62 },
+        duration: 500 + Math.random() * 700,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+    // The fountain water glows softly too.
+    this.add.image(FOUNTAIN_X, FOUNTAIN_Y + 20, key).setTint(0x7fe0c8).setAlpha(0.25).setScale(2.2, 1.1).setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  /** Drifting fog banks and fireflies. Static fog only under reduced motion. */
+  private addAmbience() {
+    const key = glowTexture(this);
+    for (let i = 0; i < 4; i++) {
+      const fog = this.add
+        .image(150 + i * 320, 260 + (i % 2) * 300, key)
+        .setTint(0xb9a7ff)
+        .setAlpha(0.05)
+        .setScale(8, 2)
+        .setDepth(90000);
+      if (!this.reducedMotion) {
+        this.tweens.add({ targets: fog, x: fog.x + 220, duration: 26000 + i * 6000, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      }
+    }
+    if (this.reducedMotion) return;
+    for (let i = 0; i < 16; i++) {
+      const fly = this.add
+        .image(Phaser.Math.Between(40, PLAZA_WIDTH - 40), Phaser.Math.Between(180, PLAZA_HEIGHT - 40), key)
+        .setTint(0xfff2a8)
+        .setScale(0.09)
+        .setAlpha(0)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(90001);
+      this.tweens.add({
+        targets: fly,
+        x: fly.x + Phaser.Math.Between(-80, 80),
+        y: fly.y + Phaser.Math.Between(-60, 60),
+        duration: Phaser.Math.Between(4000, 8000),
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+      this.tweens.add({
+        targets: fly,
+        alpha: { from: 0, to: 0.9 },
+        duration: Phaser.Math.Between(900, 2000),
+        delay: Phaser.Math.Between(0, 3000),
+        yoyo: true,
+        repeat: -1,
+      });
+    }
   }
 
   private addHauntingOverlay() {
@@ -82,22 +218,27 @@ export class PlazaScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(200000);
     // Extra lantern glow that only appears during a haunting.
+    const key = glowTexture(this);
     for (const l of LANTERNS) {
       this.hauntingGlows.push(
-        this.add.circle(l.x, l.y - 12, 64, 0xffcf7a, 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
+        this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0).setScale(2).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
       );
     }
   }
 
   private syncHaunting() {
     const on = this.room.state.haunting === true;
+    if (on && !this.wasHaunting) this.caretakerSay("The midnight haunting begins! Glow bright, everyone.");
+    this.wasHaunting = on;
     const targetVeil = on ? 0.45 : 0;
-    const targetGlow = on ? 0.3 : 0;
+    const targetGlow = on ? 0.6 : 0;
     // Ease toward the target so the lighting change is gentle (instant under reduced motion).
     const step = this.reducedMotion ? 1 : 0.04;
     this.hauntingOverlay.alpha += (targetVeil - this.hauntingOverlay.alpha) * step;
     for (const g of this.hauntingGlows) g.alpha += (targetGlow - g.alpha) * step;
   }
+
+  // --- Ghosts ---
 
   /** Create, move and remove sprites so they match the server state. */
   private syncSprites(dt: number) {
@@ -112,6 +253,10 @@ export class PlazaScene extends Phaser.Scene {
       c.setDepth(c.y); // ghosts lower on screen draw in front
       this.updateBubble(sprite, ghost.bubble);
       this.updateHat(sprite, ghost.hat);
+      if (!this.greeted && id === this.room.sessionId) {
+        this.greeted = true;
+        this.caretakerSay(`Welcome to the town, ${ghost.name}. Make yourself at home.`);
+      }
     });
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
@@ -150,31 +295,12 @@ export class PlazaScene extends Phaser.Scene {
         if (Number.isFinite(ownerId) && ownerId > 0) this.onVisit!(ownerId, g?.name ?? "A ghost");
       });
     }
-    const label = this.add
-      .text(0, -50, ghost.name, {
-        fontFamily: "Trebuchet MS, sans-serif",
-        fontSize: "16px",
-        color: isMe ? "#ffcf7a" : "#f4f1ff",
-        backgroundColor: "rgba(15,10,34,0.75)",
-        padding: { x: 6, y: 2 },
-      })
-      .setOrigin(0.5, 1);
-    const bubbleText = this.add
-      .text(0, 0, "", {
-        fontFamily: "Trebuchet MS, sans-serif",
-        fontSize: "15px",
-        color: "#2b1d0e",
-        backgroundColor: "#f3e6c8",
-        padding: { x: 8, y: 5 },
-        align: "center",
-        wordWrap: { width: 180 },
-      })
-      .setOrigin(0.5, 1);
-    const bubble = this.add.container(0, -64, [bubbleText]).setVisible(false);
+    const label = nameTag(this, ghost.name, isMe ? "#ffcf7a" : "#f4f1ff", -44, isMe);
+    const bubble = new Bubble(this, -72);
     // Hat sits just above the ghost body; texture set in updateHat.
     const hat = this.add.image(0, -30, hatTextureKey("hat-witch")).setVisible(false);
 
-    const container = this.add.container(ghost.x, ghost.y, [body, hat, label, bubble]).setAlpha(0);
+    const container = this.add.container(ghost.x, ghost.y, [groundShadow(this), body, hat, label, bubble.container]).setAlpha(0);
 
     // Join effect: a small puff — fade and pop in from slightly small.
     if (this.reducedMotion) {
@@ -183,11 +309,10 @@ export class PlazaScene extends Phaser.Scene {
       container.setScale(0.6);
       this.tweens.add({ targets: container, alpha: 1, duration: 500 });
       this.tweens.add({ targets: container, scale: 1, duration: 500, ease: "Back.easeOut" });
+      // Body and hat bob together so the hat stays on.
+      this.tweens.add({ targets: [body, hat], y: "-=6", duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
-    if (!this.reducedMotion) {
-      this.tweens.add({ targets: body, y: -6, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    }
-    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, bubbleText, shownBubble: "" };
+    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, shownBubble: "" };
     this.updateHat(sprite, ghost.hat);
     this.sprites.set(id, sprite);
     return sprite;
@@ -206,12 +331,7 @@ export class PlazaScene extends Phaser.Scene {
   private updateBubble(sprite: GhostSprite, text: string) {
     if (text === sprite.shownBubble) return;
     sprite.shownBubble = text;
-    if (text) {
-      sprite.bubbleText.setText(text);
-      sprite.bubble.setVisible(true).setDepth(100000);
-    } else {
-      sprite.bubble.setVisible(false);
-    }
+    sprite.bubble.set(text);
   }
 
   private handleKeys(time: number) {
@@ -231,21 +351,6 @@ export class PlazaScene extends Phaser.Scene {
       // Keys released: stop where we are instead of drifting to the look-ahead target.
       sendMove(this.room, { x: me.x, y: me.y });
       this.wasKeyMoving = false;
-    }
-  }
-
-  private addLanternGlows() {
-    for (const l of LANTERNS) {
-      const glow = this.add.circle(l.x, l.y - 12, 46, 0xffcf7a, 0.18).setBlendMode(Phaser.BlendModes.ADD);
-      if (this.reducedMotion) continue;
-      this.tweens.add({
-        targets: glow,
-        alpha: { from: 0.12, to: 0.26 },
-        duration: 700 + Math.random() * 600,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
     }
   }
 }

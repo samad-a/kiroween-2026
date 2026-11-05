@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1a1033" />
     <title>Club Kiro</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/fredoka-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/nunito-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -12,6 +15,7 @@
       <div id="game" aria-label="Haunted town plaza"></div>
 
       <section id="join" class="panel parchment" aria-labelledby="join-title">
+        <img id="join-ghost" class="join-ghost" alt="" />
         <h1 id="join-title">Club Kiro</h1>
         <p class="tagline">A cosy haunted town. Float in and say boo.</p>
         <form id="join-form" novalidate>
@@ -38,30 +42,46 @@
         </form>
       </section>
 
-      <p id="help" class="hint" hidden>Click to float there, or use WASD / arrow keys.</p>
+      <p id="help" class="hint glass" hidden>
+        Click to float · <kbd>WASD</kbd> to move · Click a ghost to visit their room
+      </p>
+      <p id="toast" class="toast glass" role="status" aria-live="polite" hidden></p>
 
-      <!-- Top-right HUD: coins, shop button, recovery code -->
-      <div id="hud" hidden>
-        <p id="coins" class="coins" aria-live="polite"><span aria-hidden="true">🪙</span> <span id="coin-count">0</span></p>
-        <button type="button" id="shop-button" class="secondary">Shop</button>
-        <button type="button" id="room-button" class="secondary">My room</button>
-        <button type="button" id="recovery-button" class="secondary" title="Your recovery code">Recovery code</button>
-        <button type="button" id="settings-button" class="secondary" aria-label="Settings">⚙️</button>
+      <!-- Top-right HUD: coins, shop, room, settings -->
+      <div id="hud" class="hud-bar glass" hidden>
+        <p id="coins" class="coins" aria-live="polite">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ffcf7a" stroke="#c98a2b" stroke-width="2"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#c98a2b" stroke-width="1.6"/></svg>
+          <span class="sr-only">Coins:</span><span id="coin-count">0</span>
+        </p>
+        <button type="button" id="shop-button" class="secondary with-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1 12H6L5 8zM9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          Shop
+        </button>
+        <button type="button" id="room-button" class="secondary with-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>
+          My room
+        </button>
+        <button type="button" id="settings-button" class="secondary icon-btn" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        </button>
       </div>
 
       <!-- Visit prompt: appears when you click another ghost -->
       <section id="visit-prompt" class="panel parchment" hidden aria-labelledby="visit-title">
         <div class="row between">
           <h2 id="visit-title">Visit a room?</h2>
-          <button type="button" id="visit-cancel" class="secondary" aria-label="Cancel">✕</button>
+          <button type="button" id="visit-cancel" class="secondary close-btn" aria-label="Cancel">✕</button>
         </div>
         <p id="visit-text" class="hint-inline">Drop in on this ghost's haunted room?</p>
         <button type="button" id="visit-go">Visit</button>
       </section>
 
       <!-- Room controls: shown while visiting a haunted room -->
-      <div id="room-controls" hidden>
-        <button type="button" id="return-plaza" class="secondary">← Back to plaza</button>
+      <div id="room-controls" class="hud-bar glass" hidden>
+        <button type="button" id="return-plaza" class="secondary with-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          Plaza
+        </button>
         <p id="room-owner" class="room-owner"></p>
       </div>
 
@@ -69,18 +89,21 @@
       <section id="room-editor" class="panel parchment" hidden aria-labelledby="room-editor-title">
         <div class="row between">
           <h2 id="room-editor-title">Decorate</h2>
-          <button type="button" id="room-editor-close" class="secondary" aria-label="Close">✕</button>
+          <button type="button" id="room-editor-close" class="secondary close-btn" aria-label="Close">✕</button>
         </div>
-        <p class="hint-inline">Click "Place" to add a decoration, then drag it in the room. Double-click a placed item to remove it.</p>
-        <ul id="decor-list" class="shop-list"></ul>
+        <p class="hint-inline">Place a decoration, then drag it around. Double-click one to put it away.</p>
+        <ul id="decor-list" class="shop-grid"></ul>
       </section>
 
       <!-- Ghost Fishing at the fountain -->
       <div id="fishing" hidden>
         <button type="button" id="fish-prompt" class="fish-prompt" hidden>🎣 Cast a line at the fountain</button>
-        <div id="fish-round" class="fish-round panel parchment" hidden role="group" aria-label="Ghost Fishing">
-          <p id="fish-timer" class="fish-timer" aria-live="off">60s</p>
-          <p id="fish-result" class="fish-result" role="status" aria-live="polite">Click Cast when the marker is in the glowing zone.</p>
+        <div id="fish-round" class="fish-round panel glass" hidden role="group" aria-label="Ghost Fishing">
+          <div class="fish-head">
+            <p class="fish-title">Ghost Fishing</p>
+            <p id="fish-timer" class="fish-timer" aria-live="off">60s</p>
+          </div>
+          <p id="fish-result" class="fish-result" role="status" aria-live="polite">Cast when the marker is in the glowing zone.</p>
           <div id="fish-bar" class="fish-bar" aria-hidden="true">
             <div class="fish-zone"></div>
             <div id="fish-marker" class="fish-marker"></div>
@@ -96,17 +119,17 @@
       <section id="shop" class="panel parchment" hidden aria-labelledby="shop-title">
         <div class="row between">
           <h2 id="shop-title">Haunted Shop</h2>
-          <button type="button" id="shop-close" class="secondary" aria-label="Close shop">✕</button>
+          <button type="button" id="shop-close" class="secondary close-btn" aria-label="Close shop">✕</button>
         </div>
-        <p class="hint-inline">Buy a hat or a room decoration. Each item once.</p>
-        <ul id="shop-list" class="shop-list"></ul>
+        <p class="hint-inline">Hats for your ghost, decorations for your room. Earn coins by fishing at the fountain.</p>
+        <ul id="shop-list" class="shop-grid"></ul>
       </section>
 
       <!-- Recovery code dialog -->
       <section id="recovery" class="panel parchment" hidden aria-labelledby="recovery-title">
         <div class="row between">
           <h2 id="recovery-title">Your recovery code</h2>
-          <button type="button" id="recovery-close" class="secondary" aria-label="Close">✕</button>
+          <button type="button" id="recovery-close" class="secondary close-btn" aria-label="Close">✕</button>
         </div>
         <p class="hint-inline">Write this down to play on another device.</p>
         <p id="recovery-code" class="recovery-code">—</p>
@@ -117,28 +140,31 @@
       <section id="settings" class="panel parchment" hidden aria-labelledby="settings-title">
         <div class="row between">
           <h2 id="settings-title">Settings</h2>
-          <button type="button" id="settings-close" class="secondary" aria-label="Close">✕</button>
+          <button type="button" id="settings-close" class="secondary close-btn" aria-label="Close">✕</button>
         </div>
         <label class="toggle-row">
-          <input type="checkbox" id="set-reduce-motion" />
           Reduced motion
+          <input type="checkbox" id="set-reduce-motion" class="switch" />
         </label>
         <label class="toggle-row">
-          <input type="checkbox" id="set-mute" />
           Mute music
+          <input type="checkbox" id="set-mute" class="switch" />
         </label>
+        <button type="button" id="recovery-button" class="secondary">Show my recovery code</button>
         <p class="credit-line">Music by Fato Shadow</p>
       </section>
 
       <audio id="bg-music" loop preload="auto" src="/haunted-loop.mp3"></audio>
 
       <div id="chat" hidden>
-        <p id="caretaker-resting" class="resting" role="status" hidden>🕯️ The Caretaker is resting. Chat is quietly watched.</p>
+        <p id="caretaker-resting" class="resting glass" role="status" hidden>🕯️ The Caretaker is resting. Chat is quietly watched.</p>
         <p id="caretaker-note" class="caretaker-note" role="alert" hidden></p>
-        <form id="chat-form">
+        <form id="chat-form" class="glass">
           <label for="chat-input" class="sr-only">Say something</label>
           <input id="chat-input" maxlength="120" autocomplete="off" placeholder="Say something kind…" />
-          <button type="submit">Send</button>
+          <button type="submit" class="icon-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7-8-1z"/></svg>
+          </button>
         </form>
       </div>
     </main>

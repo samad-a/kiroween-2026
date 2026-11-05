@@ -36,10 +36,53 @@ import { PlazaScene } from "./scenes/PlazaScene";
 import { RoomScene } from "./scenes/RoomScene";
 import { applyBodyClass, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
 import { makeModal } from "./modal";
+import { ghostSvg, itemPreviewUrl, svgUrl } from "./art";
 
 const COLOUR_NAMES = ["Moonlight", "Lavender", "Mint", "Pumpkin", "Rose", "Sky"];
+const COIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ffcf7a" stroke="#c98a2b" stroke-width="2"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#c98a2b" stroke-width="1.6"/></svg>`;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** A short, non-blocking message at the top of the screen. */
+let toastTimer = 0;
+function showToast(text: string) {
+  const toast = $<HTMLParagraphElement>("toast");
+  toast.textContent = text;
+  toast.hidden = false;
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (toast.hidden = true), 3000);
+}
+
+/** A shop-style card: preview, name and price. The caller appends the action. */
+function itemCard(item: (typeof SHOP_ITEMS)[number], showPrice: boolean): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "card";
+  const preview = document.createElement("div");
+  preview.className = "preview";
+  const img = document.createElement("img");
+  img.src = itemPreviewUrl(item.id);
+  img.alt = "";
+  preview.append(img);
+  const name = document.createElement("div");
+  name.className = "item-name";
+  name.textContent = item.name;
+  li.append(preview, name);
+  if (showPrice) {
+    const price = document.createElement("div");
+    price.className = "price";
+    price.innerHTML = COIN_SVG;
+    price.append(String(item.price));
+    li.append(price);
+  }
+  return li;
+}
+
+function sectionTitle(text: string): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "section-title";
+  li.textContent = text;
+  return li;
+}
 const form = $<HTMLFormElement>("join-form");
 const nameInput = $<HTMLInputElement>("name-input");
 const nameError = $<HTMLParagraphElement>("name-error");
@@ -61,6 +104,15 @@ GHOST_COLOURS.forEach((hex, i) => {
   label.append(input);
   swatches.append(label);
 });
+
+// The join card shows your ghost in the colour you pick.
+const joinGhost = $<HTMLImageElement>("join-ghost");
+const showJoinGhost = () => {
+  const i = Number(new FormData(form).get("colour") ?? 0);
+  joinGhost.src = svgUrl(ghostSvg(GHOST_COLOURS[i] ?? GHOST_COLOURS[0]!));
+};
+swatches.addEventListener("change", showJoinGhost);
+showJoinGhost();
 
 nameInput.value = randomName();
 $<HTMLButtonElement>("random-name").addEventListener("click", () => {
@@ -107,6 +159,7 @@ form.addEventListener("submit", async (event) => {
     plazaRoom = room;
     $("join").hidden = true;
     $("help").hidden = false;
+    window.setTimeout(() => $("help").classList.add("gone"), 10_000);
     $("chat").hidden = false;
     $("hud").hidden = false;
     $("fishing").hidden = false;
@@ -195,7 +248,16 @@ let currentGame: Phaser.Game | undefined;
 let onVisitGhost: ((ownerPlayerId: number, name: string) => void) | undefined;
 
 function setCoins(n: number) {
-  $<HTMLSpanElement>("coin-count").textContent = String(n);
+  const count = $<HTMLSpanElement>("coin-count");
+  const before = Number(count.textContent) || 0;
+  count.textContent = String(n);
+  if (n > before) {
+    // Restart the little bump animation each time coins go up.
+    const pill = $("coins");
+    pill.classList.remove("bump");
+    void pill.offsetWidth;
+    pill.classList.add("bump");
+  }
 }
 
 function wireWalletAndShop(room: PlazaRoom) {
@@ -209,13 +271,16 @@ function wireWalletAndShop(room: PlazaRoom) {
   const renderShop = () => {
     list.replaceChildren();
     const coins = Number($<HTMLSpanElement>("coin-count").textContent) || 0;
+    let lastKind = "";
     for (const item of SHOP_ITEMS) {
-      const li = document.createElement("li");
+      if (item.kind !== lastKind) {
+        lastKind = item.kind;
+        list.append(sectionTitle(item.kind === "hat" ? "Hats" : "Room decorations"));
+      }
       const has = owned.has(item.id);
+      const li = itemCard(item, !has);
       if (has) li.classList.add("owned");
-      const info = document.createElement("div");
-      info.innerHTML = `<div class="item-name">${item.name}</div><div class="item-kind">${item.kind} · 🪙 ${item.price}</div>`;
-      li.append(info);
+      if (wornHat === item.id) li.classList.add("wearing");
       if (has) {
         if (item.kind === "hat") {
           // Owned hats can be worn or taken off.
@@ -231,14 +296,14 @@ function wireWalletAndShop(room: PlazaRoom) {
           li.append(wear);
         } else {
           const tag = document.createElement("span");
-          tag.className = "owned-tag";
+          tag.className = "tag";
           tag.textContent = "Owned";
           li.append(tag);
         }
       } else {
         const buy = document.createElement("button");
         buy.type = "button";
-        buy.textContent = "Buy";
+        buy.textContent = coins < item.price ? `Need ${item.price - coins} more` : "Buy";
         buy.disabled = coins < item.price;
         buy.addEventListener("click", () => {
           buy.disabled = true;
@@ -262,10 +327,14 @@ function wireWalletAndShop(room: PlazaRoom) {
     }
   });
   $<HTMLButtonElement>("shop-close").addEventListener("click", () => shopModal.close());
-  recoveryButton.addEventListener("click", () => (recoveryModal.isOpen ? recoveryModal.close() : recoveryModal.open()));
+  // The recovery button lives in Settings; swap one dialog for the other.
+  recoveryButton.addEventListener("click", () => {
+    if (!$("settings").hidden) $<HTMLButtonElement>("settings-close").click();
+    recoveryModal.open();
+  });
   $<HTMLButtonElement>("recovery-close").addEventListener("click", () => recoveryModal.close());
   $<HTMLButtonElement>("recovery-copy").addEventListener("click", () => {
-    void navigator.clipboard?.writeText(recoveryCode.textContent ?? "");
+    void navigator.clipboard?.writeText(recoveryCode.textContent ?? "").then(() => showToast("Code copied"));
   });
 
   onWallet(room, (wallet) => {
@@ -286,7 +355,7 @@ function wireWalletAndShop(room: PlazaRoom) {
   onDenied(room, (msg) => {
     // Re-render to restore the button state; a quick note is enough.
     if (!shop.hidden) renderShop();
-    window.alert(msg.reason === "owned" ? "You already own that." : "Not enough coins yet.");
+    showToast(msg.reason === "owned" ? "You already own that." : "Not enough coins yet.");
   });
 }
 
@@ -417,8 +486,8 @@ function wireRooms() {
   const decorList = $<HTMLUListElement>("decor-list");
   const editorButton = document.createElement("button");
   editorButton.type = "button";
-  editorButton.className = "secondary";
-  editorButton.textContent = "Decorate";
+  editorButton.className = "secondary with-icon";
+  editorButton.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/></svg>Decorate`;
 
   roomButton.addEventListener("click", () => {
     const id = myPlayerId();
@@ -459,15 +528,13 @@ function wireRooms() {
     const ownedDecor = SHOP_ITEMS.filter((i) => i.kind === "decoration" && owned.has(i.id));
     if (ownedDecor.length === 0) {
       const li = document.createElement("li");
+      li.className = "empty";
       li.textContent = "Buy decorations in the shop first.";
       decorList.append(li);
       return;
     }
     for (const item of ownedDecor) {
-      const li = document.createElement("li");
-      const name = document.createElement("span");
-      name.className = "item-name";
-      name.textContent = item.name;
+      const li = itemCard(item, false);
       const place = document.createElement("button");
       place.type = "button";
       place.textContent = "Place";
@@ -475,7 +542,7 @@ function wireRooms() {
         // Drop near the centre; the owner then drags it where they like.
         if (roomClient) placeItem(roomClient, item.id, PLAZA_WIDTH / 2, PLAZA_HEIGHT / 2);
       });
-      li.append(name, place);
+      li.append(place);
       decorList.append(li);
     }
   };

@@ -7,9 +7,12 @@ import {
   ghostTextures,
   hatTextureKey,
   hatTextures,
+  FIREPLACE,
   roomSvg,
   svgUrl,
+  vignetteSvg,
 } from "../art";
+import { glowTexture, groundShadow, nameTag } from "../ghostParts";
 import { moveItem, removeItem, type GhostView, type HauntedRoomClient, type RoomItemView } from "../net";
 import { reduceMotion } from "../settings";
 
@@ -44,6 +47,7 @@ export class RoomScene extends Phaser.Scene {
 
   preload() {
     this.load.svg("room-bg", svgUrl(roomSvg()), { width: ROOM_WIDTH, height: ROOM_HEIGHT });
+    this.load.svg("vignette", svgUrl(vignetteSvg()), { width: ROOM_WIDTH, height: ROOM_HEIGHT });
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
     for (const t of decorTextures) this.load.svg(t.key, t.url, { width: 120, height: 96 });
@@ -51,6 +55,17 @@ export class RoomScene extends Phaser.Scene {
 
   create() {
     this.add.image(0, 0, "room-bg").setOrigin(0, 0);
+    this.add.image(0, 0, "vignette").setOrigin(0, 0).setDepth(150000);
+    // Firelight that flickers gently (steady under reduced motion).
+    const fire = this.add
+      .image(FIREPLACE.x, FIREPLACE.y, glowTexture(this))
+      .setTint(0xff9a3c)
+      .setAlpha(0.45)
+      .setScale(2.6)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    if (!this.reducedMotion) {
+      this.tweens.add({ targets: fire, alpha: { from: 0.32, to: 0.55 }, scale: { from: 2.5, to: 2.75 }, duration: 380, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       const el = document.elementFromPoint(pointer.x, pointer.y);
@@ -94,20 +109,12 @@ export class RoomScene extends Phaser.Scene {
   private spawnGhost(id: string, ghost: GhostView): GhostSprite {
     const body = this.add.image(0, 0, ghostTextureKey(ghost.colour));
     const isMe = id === this.room.sessionId;
-    const label = this.add
-      .text(0, -50, ghost.name, {
-        fontFamily: "Trebuchet MS, sans-serif",
-        fontSize: "16px",
-        color: isMe ? "#ffcf7a" : "#f4f1ff",
-        backgroundColor: "rgba(15,10,34,0.75)",
-        padding: { x: 6, y: 2 },
-      })
-      .setOrigin(0.5, 1);
+    const label = nameTag(this, ghost.name, isMe ? "#ffcf7a" : "#f4f1ff", -44, isMe);
     const hat = this.add.image(0, -30, hatTextureKey("hat-witch")).setVisible(false);
-    const container = this.add.container(ghost.x, ghost.y, [body, hat, label]).setAlpha(0);
+    const container = this.add.container(ghost.x, ghost.y, [groundShadow(this), body, hat, label]).setAlpha(0);
     this.tweens.add({ targets: container, alpha: 1, duration: this.reducedMotion ? 0 : 500 });
     if (!this.reducedMotion) {
-      this.tweens.add({ targets: body, y: -6, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      this.tweens.add({ targets: [body, hat], y: "-=6", duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
     const sprite: GhostSprite = { container, hat, shownHat: "" };
     this.updateHat(sprite, ghost.hat);
