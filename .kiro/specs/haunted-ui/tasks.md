@@ -4,10 +4,10 @@ Order groups small pieces first, then rooms (the big one), then ambience. Checkp
 typecheck + relevant tests + commit after each marked (CHECKPOINT) task, keeping a coherent history.
 
 ## Slice A — accessibility, settings, identity surfacing
-- [ ] 1. Shared reduced-motion flag + settings panel (reduced-motion, mute) persisted in `localStorage`; `reduce-motion` body class honoured by CSS and the Phaser scene
-- [ ] 2. Focus-trap + `Esc`-to-close for modal overlays (shop, recovery, settings, room editor); labelled close controls
-- [ ] 3. Freely-licensed background music behind the mute toggle; `client/public/CREDITS.md` records source/licence/attribution; autoplay only after the join gesture
-- [ ] 4. Contrast audit of theme CSS variables (automated AA); join-screen "restore with a code" entry + copy-to-clipboard on the recovery dialog (CHECKPOINT)
+- [x] 1. Shared reduced-motion flag + settings panel (reduced-motion, mute) persisted in `localStorage`; `reduce-motion` body class honoured by CSS and the Phaser scene
+- [x] 2. Focus-trap + `Esc`-to-close for modal overlays (shop, recovery, settings, room editor); labelled close controls
+- [~] 3. Music toggle wired (mute button controls `/haunted-loop.mp3`); `client/public/CREDITS.md` placeholder — **audio file still to be supplied by the human**
+- [x] 4. Contrast audit: all key pairs pass AA (ink/parchment 13.2, text/night 16–17, glow 13.3, headings 6.0, buttons 7.4); join-screen "restore with a code" + recovery copy button (CHECKPOINT)
 
 ## Slice B — rooms
 - [ ] 5. Shared rooms module (`shared/src/rooms.ts`): `PlacedItem`, `ROOM` message constants, `parseRoomLayout`/`parsePlacement`, midnight/haunting constants + tests

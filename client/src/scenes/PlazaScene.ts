@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
 import { LANTERNS, ghostTextureKey, ghostTextures, plazaSvg, svgUrl } from "../art";
 import { sendMove, type GhostView, type PlazaRoom } from "../net";
+import { reduceMotion } from "../settings";
 
 /** How quickly a rendered ghost catches up to its synced position (per second). */
 const SMOOTHING = 12;
@@ -22,7 +23,7 @@ export class PlazaScene extends Phaser.Scene {
   private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
   private lastKeySend = 0;
   private wasKeyMoving = false;
-  private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  private reducedMotion = reduceMotion();
 
   constructor() {
     super("plaza");

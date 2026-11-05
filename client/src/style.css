@@ -311,3 +311,33 @@ fieldset {
 @media (prefers-reduced-motion: reduce) {
   .fish-prompt { box-shadow: none; }
 }
+
+/* --- Settings, restore, reduced-motion overrides --- */
+
+#settings { top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; width: min(92vw, 320px); }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.toggle-row input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; cursor: pointer; }
+
+.linklike {
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  padding: 0.4rem 0;
+  width: 100%;
+  text-align: left;
+}
+
+#restore-row { margin-top: 0.4rem; }
+#recovery-copy { margin-top: 0.8rem; width: 100%; }
+
+/* When the player (or the OS) asks for reduced motion, kill the glow animation. */
+body.reduce-motion .fish-prompt { box-shadow: none; }

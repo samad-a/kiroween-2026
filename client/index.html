@@ -29,6 +29,12 @@
 
           <button type="submit" id="join-button">Float in</button>
           <p id="join-status" class="status" role="status" aria-live="polite"></p>
+
+          <button type="button" id="restore-toggle" class="linklike">Have a recovery code? Restore</button>
+          <div id="restore-row" class="row" hidden>
+            <label for="restore-input" class="sr-only">Recovery code</label>
+            <input id="restore-input" autocomplete="off" placeholder="MANE-7823" maxlength="12" />
+          </div>
         </form>
       </section>
 
@@ -39,6 +45,7 @@
         <p id="coins" class="coins" aria-live="polite"><span aria-hidden="true">🪙</span> <span id="coin-count">0</span></p>
         <button type="button" id="shop-button" class="secondary">Shop</button>
         <button type="button" id="recovery-button" class="secondary" title="Your recovery code">Recovery code</button>
+        <button type="button" id="settings-button" class="secondary" aria-label="Settings">⚙️</button>
       </div>
 
       <!-- Ghost Fishing at the fountain -->
@@ -74,9 +81,28 @@
           <h2 id="recovery-title">Your recovery code</h2>
           <button type="button" id="recovery-close" class="secondary" aria-label="Close">✕</button>
         </div>
-        <p class="hint-inline">Keep this to restore your ghost on another device.</p>
+        <p class="hint-inline">Write this down to play on another device.</p>
         <p id="recovery-code" class="recovery-code">—</p>
+        <button type="button" id="recovery-copy" class="secondary">Copy code</button>
       </section>
+
+      <!-- Settings dialog -->
+      <section id="settings" class="panel parchment" hidden aria-labelledby="settings-title">
+        <div class="row between">
+          <h2 id="settings-title">Settings</h2>
+          <button type="button" id="settings-close" class="secondary" aria-label="Close">✕</button>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="set-reduce-motion" />
+          Reduced motion
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="set-mute" />
+          Mute music
+        </label>
+      </section>
+
+      <audio id="bg-music" loop preload="auto" src="/haunted-loop.mp3"></audio>
 
       <div id="chat" hidden>
         <p id="caretaker-resting" class="resting" role="status" hidden>🕯️ The Caretaker is resting. Chat is quietly watched.</p>

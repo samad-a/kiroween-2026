@@ -7,6 +7,7 @@ import {
   SHOP_ITEMS,
   cleanName,
   getCatch,
+  parseRecoveryCode,
   randomName,
 } from "@club-kiro/shared";
 import {
@@ -27,6 +28,8 @@ import {
   type PlazaRoom,
 } from "./net";
 import { PlazaScene } from "./scenes/PlazaScene";
+import { applyBodyClass, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
+import { makeModal } from "./modal";
 
 const COLOUR_NAMES = ["Moonlight", "Lavender", "Mint", "Pumpkin", "Rose", "Sky"];
 
@@ -60,6 +63,19 @@ $<HTMLButtonElement>("random-name").addEventListener("click", () => {
   nameInput.focus();
 });
 
+// Reflect the saved reduced-motion preference before anything renders.
+applyBodyClass();
+
+// "Restore with a recovery code" reveals an input on the join screen.
+const restoreToggle = $<HTMLButtonElement>("restore-toggle");
+const restoreRow = $<HTMLDivElement>("restore-row");
+const restoreInput = $<HTMLInputElement>("restore-input");
+restoreToggle.addEventListener("click", () => {
+  const show = restoreRow.hidden;
+  restoreRow.hidden = !show;
+  if (show) restoreInput.focus();
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = cleanName(nameInput.value);
@@ -72,6 +88,10 @@ form.addEventListener("submit", async (event) => {
   nameError.hidden = true;
   nameInput.removeAttribute("aria-invalid");
   const colour = Number(new FormData(form).get("colour") ?? 0);
+
+  // If the player typed a recovery code, store it so the join uses it to restore.
+  const typedCode = parseRecoveryCode(restoreInput.value);
+  if (typedCode) saveRecoveryCode(typedCode);
 
   joinButton.disabled = true;
   status.textContent = "Drifting into the plaza…";
@@ -87,6 +107,8 @@ form.addEventListener("submit", async (event) => {
     wireFishing(room);
     startGame(room);
     wireChat(room);
+    wireSettings();
+    startMusic(); // after the join gesture, honouring the mute preference
   } catch (error) {
     console.error(error);
     status.textContent = "The plaza gates are stuck. Is the server running? Try again in a moment.";
@@ -192,18 +214,23 @@ function wireWalletAndShop(room: PlazaRoom) {
     }
   };
 
-  const toggle = (panel: HTMLElement, open: boolean) => {
-    panel.hidden = !open;
-    if (open) panel.querySelector<HTMLElement>("button, [tabindex]")?.focus();
-  };
+  const shopModal = makeModal(shop);
+  const recoveryModal = makeModal(recovery);
 
   shopButton.addEventListener("click", () => {
-    renderShop();
-    toggle(shop, shop.hidden !== false);
+    if (shopModal.isOpen) {
+      shopModal.close();
+    } else {
+      renderShop();
+      shopModal.open();
+    }
   });
-  $<HTMLButtonElement>("shop-close").addEventListener("click", () => toggle(shop, false));
-  recoveryButton.addEventListener("click", () => toggle(recovery, recovery.hidden !== false));
-  $<HTMLButtonElement>("recovery-close").addEventListener("click", () => toggle(recovery, false));
+  $<HTMLButtonElement>("shop-close").addEventListener("click", () => shopModal.close());
+  recoveryButton.addEventListener("click", () => (recoveryModal.isOpen ? recoveryModal.close() : recoveryModal.open()));
+  $<HTMLButtonElement>("recovery-close").addEventListener("click", () => recoveryModal.close());
+  $<HTMLButtonElement>("recovery-copy").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(recoveryCode.textContent ?? "");
+  });
 
   onWallet(room, (wallet) => {
     setCoins(wallet.coins);
@@ -314,4 +341,44 @@ function wireFishing(room: PlazaRoom) {
     timer.textContent = `${left}s`;
     if (left <= 0) stopRound();
   }, 250);
+}
+
+function wireSettings() {
+  const settings = $<HTMLElement>("settings");
+  const motion = $<HTMLInputElement>("set-reduce-motion");
+  const mute = $<HTMLInputElement>("set-mute");
+
+  motion.checked = reduceMotion();
+  mute.checked = muted();
+
+  motion.addEventListener("change", () => setReduceMotion(motion.checked));
+  mute.addEventListener("change", () => {
+    setMuted(mute.checked);
+    applyMute();
+  });
+
+  const settingsModal = makeModal(settings);
+  $<HTMLButtonElement>("settings-button").addEventListener("click", () =>
+    settingsModal.isOpen ? settingsModal.close() : settingsModal.open(),
+  );
+  $<HTMLButtonElement>("settings-close").addEventListener("click", () => settingsModal.close());
+}
+
+function music(): HTMLAudioElement {
+  return $<HTMLAudioElement>("bg-music");
+}
+
+function applyMute() {
+  const el = music();
+  if (muted()) {
+    el.pause();
+  } else {
+    el.volume = 0.3;
+    void el.play().catch(() => {}); // ignore autoplay rejection; a later gesture will start it
+  }
+}
+
+function startMusic() {
+  music().volume = 0.3;
+  applyMute();
 }
