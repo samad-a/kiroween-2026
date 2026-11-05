@@ -1,16 +1,12 @@
 # Client asset credits
 
-## Background music — PENDING
+## Background music
 
-`client/public/haunted-loop.mp3` is referenced by the mute toggle but not yet committed.
-Drop in a freely-licensed, looping cosy-spooky track (CC0 or CC-BY, MIT-compatible) and record it here:
+`client/public/haunted-loop.mp3` — the cosy-spooky loop behind the mute toggle.
 
-- Title:
-- Author:
-- Source URL:
-- Licence: (e.g. CC0 / CC-BY 4.0 — attribution required)
+- Author: **Fato Shadow**
 
-Until the file is added, the game runs silently; the mute toggle still works.
+Used with attribution per the author's terms. Credit: music by Fato Shadow.
 
 ## Art
 

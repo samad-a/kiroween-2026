@@ -365,3 +365,5 @@ body.reduce-motion .fish-prompt { box-shadow: none; }
 
 #room-editor { top: 50%; left: 1rem; transform: translateY(-50%); z-index: 10; width: min(92vw, 300px); }
 #room-editor .shop-list button { width: auto; }
+
+.credit-line { margin: 0.8rem 0 0; font-size: 0.8rem; opacity: 0.7; }

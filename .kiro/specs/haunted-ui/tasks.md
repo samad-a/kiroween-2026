@@ -6,7 +6,7 @@ typecheck + relevant tests + commit after each marked (CHECKPOINT) task, keeping
 ## Slice A — accessibility, settings, identity surfacing
 - [x] 1. Shared reduced-motion flag + settings panel (reduced-motion, mute) persisted in `localStorage`; `reduce-motion` body class honoured by CSS and the Phaser scene
 - [x] 2. Focus-trap + `Esc`-to-close for modal overlays (shop, recovery, settings, room editor); labelled close controls
-- [~] 3. Music toggle wired (mute button controls `/haunted-loop.mp3`); `client/public/CREDITS.md` placeholder — **audio file still to be supplied by the human**
+- [x] 3. Music toggle wired (mute button controls `/haunted-loop.mp3`, supplied by the human — music by Fato Shadow); credited in `client/public/CREDITS.md` and in the settings panel
 - [x] 4. Contrast audit: all key pairs pass AA (ink/parchment 13.2, text/night 16–17, glow 13.3, headings 6.0, buttons 7.4); join-screen "restore with a code" + recovery copy button (CHECKPOINT)
 
 ## Slice B — rooms
