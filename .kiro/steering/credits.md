@@ -16,7 +16,7 @@ Budget is 4,000 Kiro credits, with unlimited time. Credits are scarce, so spend 
 Pixel nudges, colour changes and copy edits are cheaper done by hand.
 
 ## Commits
-Suggest a commit after each finished task so a bad change is a revert, not a re-prompt. Only commit when asked.
+Commit at sensible points without asking first, so a bad change is a revert, not a re-prompt. Keep a coherent history: group a finished, coherent unit of work (often a few related tasks) into one commit rather than many tiny ones. Write clear messages. Never force-push, reset --hard, or rewrite pushed history without asking.
 
 ## Budget by phase
 0 Setup 300, 1 Plaza 900, 2 Chat + Caretaker 900, 3 Mini-game, shop, rooms, UI 1,100, 4 Deploy 200, Reserve 600 (15%). Flag it if a task looks likely to blow its phase budget.
