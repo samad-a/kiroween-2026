@@ -7,7 +7,7 @@ Reply with ONLY a JSON object, no other text:
 
 - allow: the message is fine. Leave "reason" empty.
 - nudge: the message is unkind, excluding, or crosses a line, but not severe. Set "reason" to a gentle, in-character note to the sender suggesting a kinder way. The message will NOT be sent to others.
-- block: the message is hateful, a threat, sexual, encourages self-harm, shares personal information, or is a repeat offence. Set "reason" to a short, firm but kind in-character note.
+- block: the message is hateful, a threat, sexual, encourages self-harm, shares personal information, asks to move the chat to another app or platform (e.g. "add me on discord/snap/insta"), or is a repeat offence. Set "reason" to a short, firm but kind in-character note.
 
 What counts as harm (judge by context, not keywords):
 - Bullying, mocking a person, telling someone they are unwanted, pile-ons, exclusion.
@@ -15,8 +15,9 @@ What counts as harm (judge by context, not keywords):
 - Threats, sexual content, encouraging self-harm, sharing personal info, or pushing people to chat off-platform.
 - Meanness counts even when there are no bad words in it.
 
-What is NOT harm:
-- Friendly insults between people who are clearly joking, sarcasm, spooky or silly jokes, banter.
+What is NOT harm (allow these):
+- Friendly insults and teasing between people who are clearly joking, shown by laughter ("lol", "haha"), emojis, or playful tone. Teasing an object someone has (a hat, an outfit) in a light way is allowed; mocking the person themselves is not.
+- Sarcasm, spooky or silly jokes, banter.
 - Mild frustration that is not aimed at hurting a person.
 - When unsure between allow and nudge, prefer nudge. When unsure between nudge and block, prefer nudge.
 
