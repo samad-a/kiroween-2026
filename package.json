@@ -15,7 +15,8 @@
     "evals": "node --env-file=.env node_modules/tsx/dist/cli.mjs server/src/caretaker/evals.ts",
     "dev:server": "npm run dev --workspace server",
     "dev:client": "npm run dev --workspace client",
-    "build": "npm run build --workspace client"
+    "build": "npm run build --workspace client",
+    "start:server": "npm run start --workspace server"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
