@@ -4,10 +4,13 @@ import fc from "fast-check";
 import { MAX_GHOSTS_PER_PLAZA, PLAZA_ROOM, hitsObstacle } from "@club-kiro/shared";
 import { createServer } from "./app.js";
 import { PlazaRoom, spawnPoint } from "./PlazaRoom.js";
+import { openDb } from "./db/index.js";
+import { setDb } from "./db/shared.js";
 
 let colyseus: ColyseusTestServer;
 
 beforeAll(async () => {
+  setDb(openDb(":memory:")); // hermetic: never touch the on-disk database in tests
   colyseus = await boot(createServer(), 2599);
 });
 afterAll(async () => {

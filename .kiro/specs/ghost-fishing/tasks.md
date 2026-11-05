@@ -9,9 +9,9 @@ round, then the shop, then the client. One testable piece at a time; commit afte
 - [x] 4. Players repository (`server/src/db/players.ts`): `resolvePlayer`, `getPlayer`, `addCoins`, `ownsItem`, `buyItem` + tests (coins never negative, no double-buy, resolve order)
 - [x] 5. Shared fishing + shop message types and parsers (`shared/src/fishing.ts`, `shared/src/shop.ts`): catch table, `parseCast`, catalogue (~6 hats + ~6 decorations), `parseBuy` + tests
 - [x] 6. Catch roll (`server/src/fishing.ts`): weighted, accuracy-scaled, injectable random + tests (distribution within tolerance, always a valid catch)
-- [ ] 7. Wire identity into `PlazaRoom.onJoin`: resolve player, attach `playerId`, send `wallet` (coins + owned items)
-- [ ] 8. Fishing round in `PlazaRoom`: `fish:start/cast/end` handlers, 60 s server timeout, cast rate limit, credit coins once on end + tests (round credits the sum once, double-end is a no-op)
-- [ ] 9. Shop buy in `PlazaRoom`: `shop:buy` → validate / not-owned / affordable → transaction → `shop:bought`/`shop:denied` + tests
+- [x] 7. Wire identity into `PlazaRoom.onJoin`: resolve player, attach `playerId`, send `wallet` (coins + owned items)
+- [x] 8. Fishing round in `PlazaRoom`: `fish:start/cast/end` handlers, 60 s server timeout, cast rate limit, credit coins once on end + tests (round credits the sum once, double-end is a no-op)
+- [x] 9. Shop buy in `PlazaRoom`: `shop:buy` → validate / not-owned / affordable → transaction → `shop:bought`/`shop:denied` + tests
 - [ ] 10. Client net helpers (`client/src/net.ts`): guest id + recovery code in `localStorage`, send on join, `sendCast`/`sendBuy`, `onWallet`/`onCatch`/`onBought` handlers
 - [ ] 11. Client UI: fountain "cast a line" prompt, timing bar, coin counter, shop panel (owned/affordable states), recovery-code display. Plain HTML/CSS overlay, keyboard-focusable
 - [ ] 12. Browser check: start a round, catch, buy an item, confirm coins/ownership persist across reconnect; screenshot for the gallery

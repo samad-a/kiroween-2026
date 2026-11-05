@@ -1,28 +1,50 @@
 import { Room, type Client } from "colyseus";
 import {
   BUBBLE_TTL_MS,
+  CAST_COOLDOWN_MS,
+  CATCHES,
   CHAT_ROOM_MESSAGE,
+  FISH,
+  FISH_EVENT,
   GHOST_COLOURS,
   MAX_GHOSTS_PER_PLAZA,
   MAX_MESSAGE_LENGTH,
   MESSAGE,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
+  ROUND_MS,
+  SHOP,
+  SHOP_EVENT,
   cleanMessage,
   cleanName,
+  getShopItem,
   hitsObstacle,
+  parseBuy,
+  parseCast,
   parseColour,
+  parseGuestId,
   parseMove,
   randomName,
   stepGhost,
   type CaretakerNote,
   type ChatBroadcast,
   type ChatMessage,
+  type FishCatch,
+  type FishEnded,
+  type FishStarted,
   type JoinOptions,
   type Point,
+  type ShopBought,
+  type ShopDenied,
+  type Wallet,
 } from "@club-kiro/shared";
+import { randomUUID } from "node:crypto";
 import { Ghost, PlazaState } from "./state.js";
 import { createModerator, type Moderator } from "./caretaker/moderate.js";
+import { getDb } from "./db/shared.js";
+import { addCoins, buyItem, displayRecoveryCode, getPlayer, ownedItems, resolvePlayer } from "./db/players.js";
+import { rollCatch } from "./fishing.js";
+import type { DB } from "./db/index.js";
 
 export const TICK_MS = 50;
 /** How often to recheck whether the Caretaker's AI is back. */
@@ -44,6 +66,13 @@ interface ChatInfo {
   mutedUntil: number;
 }
 
+/** Per-connection fishing round. Single-player, so not synced state. */
+interface FishingRound {
+  endsAt: number;
+  lastCastAt: number;
+  earned: number;
+}
+
 export class PlazaRoom extends Room<{ state: PlazaState }> {
   maxClients = MAX_GHOSTS_PER_PLAZA;
   maxMessagesPerSecond = 30;
@@ -51,7 +80,12 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
 
   private readonly targets = new Map<string, Point>();
   private readonly chat = new Map<string, ChatInfo>();
+  private readonly playerIds = new Map<string, number>();
+  private readonly rounds = new Map<string, FishingRound>();
   private moderator: Moderator = createModerator();
+  /** Injectable for tests; defaults to the process-wide database. */
+  db: DB = getDb();
+  private random: () => number = Math.random;
 
   messages = {
     [MESSAGE.move]: (client: Client, payload: unknown) => {
@@ -61,6 +95,10 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [CHAT_ROOM_MESSAGE.chat]: (client: Client, payload: unknown) => {
       void this.handleChat(client, payload);
     },
+    [FISH.start]: (client: Client) => this.handleFishStart(client),
+    [FISH.cast]: (client: Client, payload: unknown) => this.handleFishCast(client, payload),
+    [FISH.end]: (client: Client) => this.handleFishEnd(client),
+    [SHOP.buy]: (client: Client, payload: unknown) => this.handleBuy(client, payload),
   };
 
   onCreate() {
@@ -80,12 +118,35 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     ghost.bubbleUntil = 0;
     this.state.ghosts.set(client.sessionId, ghost);
     this.chat.set(client.sessionId, { lastMessageAt: 0, blocks: 0, mutedUntil: 0 });
+
+    // Resolve the persistent player (recovery code -> guest id -> new) and send their wallet.
+    const guestId = parseGuestId(options?.guestId) ?? randomUUID();
+    const player = resolvePlayer(this.db, guestId, options?.recoveryCode ?? null, this.random);
+    this.playerIds.set(client.sessionId, player.id);
+    client.userData = { playerId: player.id };
+    this.sendWallet(client);
   }
 
   onLeave(client: Client) {
     this.state.ghosts.delete(client.sessionId);
     this.targets.delete(client.sessionId);
     this.chat.delete(client.sessionId);
+    this.playerIds.delete(client.sessionId);
+    this.rounds.delete(client.sessionId);
+  }
+
+  /** Send the player their coins, owned items and recovery code. */
+  private sendWallet(client: Client) {
+    const playerId = this.playerIds.get(client.sessionId);
+    if (playerId === undefined) return;
+    const player = getPlayer(this.db, playerId);
+    if (!player) return;
+    const wallet: Wallet = {
+      coins: player.coins,
+      items: ownedItems(this.db, playerId),
+      recoveryCode: displayRecoveryCode(player),
+    };
+    client.send(SHOP_EVENT.wallet, wallet);
   }
 
   private async refreshHealth() {
@@ -137,6 +198,67 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     });
   }
 
+  // --- Ghost Fishing (single-player, request/response, not synced state) ---
+
+  private handleFishStart(client: Client) {
+    const playerId = this.playerIds.get(client.sessionId);
+    if (playerId === undefined) return;
+    // Starting again replaces any stale round; a fresh round earns from zero.
+    this.rounds.set(client.sessionId, { endsAt: Date.now() + ROUND_MS, lastCastAt: 0, earned: 0 });
+    const started: FishStarted = { roundMs: ROUND_MS, catches: CATCHES };
+    client.send(FISH_EVENT.started, started);
+  }
+
+  private handleFishCast(client: Client, payload: unknown) {
+    const round = this.rounds.get(client.sessionId);
+    if (!round) return;
+    const now = Date.now();
+    if (now >= round.endsAt) {
+      this.handleFishEnd(client);
+      return;
+    }
+    const cast = parseCast(payload);
+    if (!cast) return;
+    if (now - round.lastCastAt < CAST_COOLDOWN_MS) return; // rate limit: no coin farming
+    round.lastCastAt = now;
+
+    const caught = rollCatch(cast.accuracy, this.random);
+    round.earned += caught.coins;
+    const result: FishCatch = { catchId: caught.id, coins: caught.coins };
+    client.send(FISH_EVENT.catch, result);
+  }
+
+  private handleFishEnd(client: Client) {
+    const round = this.rounds.get(client.sessionId);
+    const playerId = this.playerIds.get(client.sessionId);
+    if (!round || playerId === undefined) return;
+    this.rounds.delete(client.sessionId); // delete first: a second end is a no-op
+
+    const balance = round.earned > 0 ? addCoins(this.db, playerId, round.earned) : getPlayer(this.db, playerId)?.coins;
+    const ended: FishEnded = { coinsEarned: round.earned, balance: balance ?? 0 };
+    client.send(FISH_EVENT.ended, ended);
+  }
+
+  // --- Shop ---
+
+  private handleBuy(client: Client, payload: unknown) {
+    const playerId = this.playerIds.get(client.sessionId);
+    if (playerId === undefined) return;
+    const buy = parseBuy(payload);
+    if (!buy) return;
+    const item = getShopItem(buy.itemId)!; // parseBuy only passes known ids
+
+    const balance = buyItem(this.db, playerId, item.id, item.price);
+    if (balance === null) {
+      const owned = ownedItems(this.db, playerId).includes(item.id);
+      const denied: ShopDenied = { itemId: item.id, reason: owned ? "owned" : "cost" };
+      client.send(SHOP_EVENT.denied, denied);
+      return;
+    }
+    const bought: ShopBought = { itemId: item.id, balance };
+    client.send(SHOP_EVENT.bought, bought);
+  }
+
   /** Advance moving ghosts and expire old chat bubbles. Public so tests can drive it. */
   tick(dtSeconds: number) {
     const now = Date.now();
@@ -157,5 +279,13 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
         ghost.bubbleUntil = 0;
       }
     });
+    // Close any fishing round whose 60 seconds are up.
+    for (const [id, round] of this.rounds) {
+      if (now >= round.endsAt) {
+        const client = this.clients.find((c) => c.sessionId === id);
+        if (client) this.handleFishEnd(client);
+        else this.rounds.delete(id);
+      }
+    }
   }
 }

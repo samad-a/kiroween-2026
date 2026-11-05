@@ -8,6 +8,10 @@ export const DEFAULT_SERVER_PORT = 2567;
 export interface JoinOptions {
   name?: string;
   colour?: number;
+  /** Browser-kept guest id (UUID). A new one is created server-side if missing/invalid. */
+  guestId?: string;
+  /** A recovery code the player typed to restore an account on a new device. */
+  recoveryCode?: string;
 }
 
 /** Client to server: "walk toward this point". Never an authoritative position. */
