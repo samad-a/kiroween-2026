@@ -4,6 +4,7 @@ import {
   DEFAULT_SERVER_PORT,
   FISH,
   FISH_EVENT,
+  HAUNTED_ROOM,
   MESSAGE,
   PLAZA_ROOM,
   ROOM,
@@ -44,6 +45,22 @@ export interface PlazaView {
 
 export type PlazaRoom = Room<unknown, PlazaView>;
 
+/** A placed decoration as the client reads it from synced room state. */
+export interface RoomItemView {
+  itemId: string;
+  x: number;
+  y: number;
+}
+
+export interface HauntedRoomView {
+  ghosts: { forEach(cb: (ghost: GhostView, id: string) => void): void; get(id: string): GhostView | undefined };
+  items: { forEach(cb: (item: RoomItemView, i: number) => void): void; length: number; [i: number]: RoomItemView };
+  ownerId: string;
+  ownerName: string;
+}
+
+export type HauntedRoomClient = Room<unknown, HauntedRoomView>;
+
 function serverUrl(): string {
   const configured = import.meta.env.VITE_SERVER_URL as string | undefined;
   if (configured) return configured;
@@ -77,6 +94,26 @@ export async function joinPlaza(options: JoinOptions): Promise<PlazaRoom> {
   const client = new Client(serverUrl());
   const room = await client.joinOrCreate<PlazaView>(PLAZA_ROOM, joinOptionsWithIdentity(options));
   return room as PlazaRoom;
+}
+
+/** Visit a haunted room by its owner's player id. */
+export async function joinHauntedRoom(options: JoinOptions, ownerPlayerId: number): Promise<HauntedRoomClient> {
+  const client = new Client(serverUrl());
+  const room = await client.joinOrCreate<HauntedRoomView>(HAUNTED_ROOM, {
+    ...joinOptionsWithIdentity(options),
+    ownerPlayerId,
+  });
+  return room as HauntedRoomClient;
+}
+
+export function placeItem(room: HauntedRoomClient, itemId: string, x: number, y: number): void {
+  room.send(ROOM.place, { itemId, x, y });
+}
+export function moveItem(room: HauntedRoomClient, index: number, x: number, y: number): void {
+  room.send(ROOM.move, { index, x, y });
+}
+export function removeItem(room: HauntedRoomClient, index: number): void {
+  room.send(ROOM.remove, { index });
 }
 
 export function sendMove(room: PlazaRoom, target: MoveMessage): void {

@@ -21,14 +21,19 @@ import {
   onFishStarted,
   onWallet,
   saveRecoveryCode,
+  joinHauntedRoom,
+  placeItem,
+  removeItem,
   sendBuy,
   sendCast,
   sendChat,
   sendSetHat,
   startFishing,
+  type HauntedRoomClient,
   type PlazaRoom,
 } from "./net";
 import { PlazaScene } from "./scenes/PlazaScene";
+import { RoomScene } from "./scenes/RoomScene";
 import { applyBodyClass, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
 import { makeModal } from "./modal";
 
@@ -97,7 +102,9 @@ form.addEventListener("submit", async (event) => {
   joinButton.disabled = true;
   status.textContent = "Drifting into the plaza…";
   try {
+    identity = { name, colour }; // remembered for re-joining after a room visit
     const room = await joinPlaza({ name, colour });
+    plazaRoom = room;
     $("join").hidden = true;
     $("help").hidden = false;
     $("chat").hidden = false;
@@ -109,6 +116,7 @@ form.addEventListener("submit", async (event) => {
     startGame(room);
     wireChat(room);
     wireSettings();
+    wireRooms();
     startMusic(); // after the join gesture, honouring the mute preference
   } catch (error) {
     console.error(error);
@@ -117,7 +125,7 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
+function newGame(): Phaser.Game {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: "game",
@@ -126,9 +134,15 @@ function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
     backgroundColor: "#0f0a22",
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   });
-  game.scene.add("plaza", PlazaScene, true, { room });
-  game.canvas.setAttribute("tabindex", "0");
-  game.canvas.focus();
+  return game;
+}
+
+function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
+  currentGame?.destroy(true);
+  currentGame = newGame();
+  currentGame.scene.add("plaza", PlazaScene, true, { room });
+  currentGame.canvas.setAttribute("tabindex", "0");
+  currentGame.canvas.focus();
 }
 
 function wireChat(room: PlazaRoom) {
@@ -173,6 +187,10 @@ const FISH_RANGE = 160; // how close a ghost must be to cast
 
 const owned = new Set<string>();
 let wornHat = ""; // the shop item id of the currently-worn hat, or ""
+let identity: { name: string; colour: number } = { name: "", colour: 0 };
+let plazaRoom: PlazaRoom | undefined;
+let roomClient: HauntedRoomClient | undefined;
+let currentGame: Phaser.Game | undefined;
 
 function setCoins(n: number) {
   $<HTMLSpanElement>("coin-count").textContent = String(n);
@@ -378,6 +396,110 @@ function wireSettings() {
     settingsModal.isOpen ? settingsModal.close() : settingsModal.open(),
   );
   $<HTMLButtonElement>("settings-close").addEventListener("click", () => settingsModal.close());
+}
+
+/** My own player id, read from my ghost's synced ownerId in the plaza. */
+function myPlayerId(): number | null {
+  const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+  const id = me?.ownerId ? Number(me.ownerId) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function wireRooms() {
+  const roomButton = $<HTMLButtonElement>("room-button");
+  const roomControls = $<HTMLDivElement>("room-controls");
+  const roomOwner = $<HTMLParagraphElement>("room-owner");
+  const returnButton = $<HTMLButtonElement>("return-plaza");
+  const editor = $<HTMLElement>("room-editor");
+  const editorModal = makeModal(editor);
+  const decorList = $<HTMLUListElement>("decor-list");
+  const editorButton = document.createElement("button");
+  editorButton.type = "button";
+  editorButton.className = "secondary";
+  editorButton.textContent = "Decorate";
+
+  roomButton.addEventListener("click", () => {
+    const id = myPlayerId();
+    if (id !== null) void visitRoom(id, true);
+  });
+  returnButton.addEventListener("click", () => void returnToPlaza());
+  $<HTMLButtonElement>("room-editor-close").addEventListener("click", () => editorModal.close());
+  editorButton.addEventListener("click", () => {
+    renderDecorList();
+    editorModal.isOpen ? editorModal.close() : editorModal.open();
+  });
+
+  const renderDecorList = () => {
+    if (!roomClient) return;
+    decorList.replaceChildren();
+    const ownedDecor = SHOP_ITEMS.filter((i) => i.kind === "decoration" && owned.has(i.id));
+    if (ownedDecor.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "Buy decorations in the shop first.";
+      decorList.append(li);
+      return;
+    }
+    for (const item of ownedDecor) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "item-name";
+      name.textContent = item.name;
+      const place = document.createElement("button");
+      place.type = "button";
+      place.textContent = "Place";
+      place.addEventListener("click", () => {
+        // Drop near the centre; the owner then drags it where they like.
+        if (roomClient) placeItem(roomClient, item.id, PLAZA_WIDTH / 2, PLAZA_HEIGHT / 2);
+      });
+      li.append(name, place);
+      decorList.append(li);
+    }
+  };
+
+  async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
+    try {
+      // Leave the plaza world and open the room world.
+      await plazaRoom?.leave();
+      roomClient = await joinHauntedRoom(identity, ownerPlayerId);
+      currentGame?.destroy(true);
+      currentGame = newGame();
+      currentGame.scene.add("room", RoomScene, true, { room: roomClient, isOwner });
+      currentGame.canvas.setAttribute("tabindex", "0");
+      currentGame.canvas.focus();
+      // Swap HUD affordances for room ones.
+      $("fishing").hidden = true;
+      roomControls.hidden = false;
+      roomOwner.textContent = isOwner ? "Your haunted room" : `${roomClient.state.ownerName}'s room`;
+      roomButton.hidden = true;
+      // Owner gets a Decorate button in the HUD.
+      if (isOwner && !editorButton.isConnected) $("hud").append(editorButton);
+      editorButton.hidden = !isOwner;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function returnToPlaza() {
+    try {
+      editorModal.close();
+      await roomClient?.leave();
+      roomClient = undefined;
+      const room = await joinPlaza(identity);
+      plazaRoom = room;
+      // Re-wear the hat the player had on.
+      if (wornHat) sendSetHat(room, wornHat);
+      wireWalletAndShop(room);
+      wireFishing(room);
+      startGame(room);
+      wireChat(room);
+      roomControls.hidden = true;
+      roomButton.hidden = false;
+      editorButton.hidden = true;
+      $("fishing").hidden = false;
+    } catch (err) {
+      console.error(err);
+    }
+  }
 }
 
 function music(): HTMLAudioElement {

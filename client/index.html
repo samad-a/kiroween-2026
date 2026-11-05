@@ -44,9 +44,26 @@
       <div id="hud" hidden>
         <p id="coins" class="coins" aria-live="polite"><span aria-hidden="true">🪙</span> <span id="coin-count">0</span></p>
         <button type="button" id="shop-button" class="secondary">Shop</button>
+        <button type="button" id="room-button" class="secondary">My room</button>
         <button type="button" id="recovery-button" class="secondary" title="Your recovery code">Recovery code</button>
         <button type="button" id="settings-button" class="secondary" aria-label="Settings">⚙️</button>
       </div>
+
+      <!-- Room controls: shown while visiting a haunted room -->
+      <div id="room-controls" hidden>
+        <button type="button" id="return-plaza" class="secondary">← Back to plaza</button>
+        <p id="room-owner" class="room-owner"></p>
+      </div>
+
+      <!-- Room editor: only the owner sees this -->
+      <section id="room-editor" class="panel parchment" hidden aria-labelledby="room-editor-title">
+        <div class="row between">
+          <h2 id="room-editor-title">Decorate</h2>
+          <button type="button" id="room-editor-close" class="secondary" aria-label="Close">✕</button>
+        </div>
+        <p class="hint-inline">Click "Place" to add a decoration, then drag it in the room. Double-click a placed item to remove it.</p>
+        <ul id="decor-list" class="shop-list"></ul>
+      </section>
 
       <!-- Ghost Fishing at the fountain -->
       <div id="fishing" hidden>

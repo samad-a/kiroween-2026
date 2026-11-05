@@ -2,6 +2,7 @@ import { GHOST_COLOURS, PLAZA_HEIGHT, PLAZA_WIDTH } from "./constants.js";
 import type { Point } from "./movement.js";
 
 export const PLAZA_ROOM = "plaza";
+export const HAUNTED_ROOM = "haunted-room";
 export const DEFAULT_SERVER_PORT = 2567;
 
 /** Options a client sends when joining the plaza. Validated server-side. */

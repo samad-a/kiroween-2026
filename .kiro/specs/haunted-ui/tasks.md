@@ -13,9 +13,9 @@ typecheck + relevant tests + commit after each marked (CHECKPOINT) task, keeping
 - [x] 5. Shared rooms module (`shared/src/rooms.ts`): `PlacedItem`, `ROOM` message constants, `parseRoomLayout`/`parsePlacement`, midnight/haunting constants + tests
 - [x] 6. SQLite v2 migration (`rooms` table, JSON layout) + rooms repository (`getLayout`/`saveLayout` with owned+in-bounds validation) + tests
 - [x] 7. `Ghost.hat` + `ownerId` schema fields; `set-hat` intent validated against owned hats; draw the hat SVG above the ghost in `PlazaScene`; shop Wear/Take-off control (CHECKPOINT)
-- [ ] 8. `HauntedRoomState` + `HauntedRoom` (join with ownerPlayerId, synced items, owner-only place/move/remove, persistence) + tests
-- [ ] 9. Client: extract shared ghost rendering/movement; `RoomScene`; decoration art in `art.ts`; visit/return flow between plaza and room
-- [ ] 10. Client: room-editor overlay (place/move/remove, owned decorations only) (CHECKPOINT)
+- [x] 8. `HauntedRoomState` + `HauntedRoom` (join with ownerPlayerId, synced items, owner-only place/move/remove, persistence) + tests
+- [x] 9. Client: `RoomScene` (ghosts, hats, decorations, movement); decoration + room art; visit/return flow between plaza and room
+- [x] 10. Client: room-editor overlay (place via list, drag to move, double-click to remove; owned decorations only) (CHECKPOINT)
 
 ## Slice C — ambience
 - [ ] 11. Midnight haunting: server timer flips synced `haunting` flag on/off, Caretaker announces; client shifts plaza lighting + lantern glow (both scenes, reduced-motion aware) + test

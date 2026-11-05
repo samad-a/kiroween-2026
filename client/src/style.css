@@ -341,3 +341,26 @@ fieldset {
 
 /* When the player (or the OS) asks for reduced motion, kill the glow animation. */
 body.reduce-motion .fish-prompt { box-shadow: none; }
+
+/* --- Rooms --- */
+
+#room-controls {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.room-owner {
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(15, 10, 34, 0.82);
+  color: var(--glow);
+  font-weight: bold;
+}
+
+#room-editor { top: 50%; left: 1rem; transform: translateY(-50%); z-index: 10; width: min(92vw, 300px); }
+#room-editor .shop-list button { width: auto; }

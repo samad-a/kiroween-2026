@@ -126,3 +126,23 @@ export const decorTextures = Object.entries(DECOR_SVGS).map(([id, svg]) => ({
   key: decorTextureKey(id),
   url: svgUrl(svg),
 }));
+
+/** A cosy haunted-room interior: wooden floor, striped wall, a small window. */
+export function roomSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${PLAZA_WIDTH}" height="${PLAZA_HEIGHT}" viewBox="0 0 ${PLAZA_WIDTH} ${PLAZA_HEIGHT}">
+  <defs><linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1a48"/><stop offset="1" stop-color="#3a2560"/></linearGradient></defs>
+  <rect width="100%" height="100%" fill="url(#wall)"/>
+  <!-- wall panelling -->
+  <g stroke="#241840" stroke-width="2" opacity="0.5">
+    ${Array.from({ length: 12 }, (_, i) => `<line x1="${i * 110}" y1="0" x2="${i * 110}" y2="300"/>`).join("")}
+  </g>
+  <!-- round window with the moon -->
+  <circle cx="900" cy="140" r="70" fill="#140c2c" stroke="#5a4a7a" stroke-width="8"/>
+  <circle cx="880" cy="120" r="34" fill="#f5e6a8" opacity="0.9"/>
+  <!-- wooden floor -->
+  <rect x="0" y="300" width="${PLAZA_WIDTH}" height="${PLAZA_HEIGHT - 300}" fill="#4a3426"/>
+  <g stroke="#3a281c" stroke-width="3" opacity="0.7">
+    ${Array.from({ length: 8 }, (_, i) => `<line x1="0" y1="${300 + i * 50}" x2="${PLAZA_WIDTH}" y2="${300 + i * 50}"/>`).join("")}
+  </g>
+</svg>`;
+}
