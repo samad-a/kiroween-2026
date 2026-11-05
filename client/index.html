@@ -34,6 +34,50 @@
 
       <p id="help" class="hint" hidden>Click to float there, or use WASD / arrow keys.</p>
 
+      <!-- Top-right HUD: coins, shop button, recovery code -->
+      <div id="hud" hidden>
+        <p id="coins" class="coins" aria-live="polite"><span aria-hidden="true">🪙</span> <span id="coin-count">0</span></p>
+        <button type="button" id="shop-button" class="secondary">Shop</button>
+        <button type="button" id="recovery-button" class="secondary" title="Your recovery code">Recovery code</button>
+      </div>
+
+      <!-- Ghost Fishing at the fountain -->
+      <div id="fishing" hidden>
+        <button type="button" id="fish-prompt" class="fish-prompt" hidden>🎣 Cast a line at the fountain</button>
+        <div id="fish-round" class="fish-round panel parchment" hidden role="group" aria-label="Ghost Fishing">
+          <p id="fish-timer" class="fish-timer" aria-live="off">60s</p>
+          <p id="fish-result" class="fish-result" role="status" aria-live="polite">Click Cast when the marker is in the glowing zone.</p>
+          <div id="fish-bar" class="fish-bar" aria-hidden="true">
+            <div class="fish-zone"></div>
+            <div id="fish-marker" class="fish-marker"></div>
+          </div>
+          <div class="row">
+            <button type="button" id="fish-cast">Cast</button>
+            <button type="button" id="fish-stop" class="secondary">Pack up</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shop panel -->
+      <section id="shop" class="panel parchment" hidden aria-labelledby="shop-title">
+        <div class="row between">
+          <h2 id="shop-title">Haunted Shop</h2>
+          <button type="button" id="shop-close" class="secondary" aria-label="Close shop">✕</button>
+        </div>
+        <p class="hint-inline">Buy a hat or a room decoration. Each item once.</p>
+        <ul id="shop-list" class="shop-list"></ul>
+      </section>
+
+      <!-- Recovery code dialog -->
+      <section id="recovery" class="panel parchment" hidden aria-labelledby="recovery-title">
+        <div class="row between">
+          <h2 id="recovery-title">Your recovery code</h2>
+          <button type="button" id="recovery-close" class="secondary" aria-label="Close">✕</button>
+        </div>
+        <p class="hint-inline">Keep this to restore your ghost on another device.</p>
+        <p id="recovery-code" class="recovery-code">—</p>
+      </section>
+
       <div id="chat" hidden>
         <p id="caretaker-resting" class="resting" role="status" hidden>🕯️ The Caretaker is resting. Chat is quietly watched.</p>
         <p id="caretaker-note" class="caretaker-note" role="alert" hidden></p>

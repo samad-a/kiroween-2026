@@ -185,3 +185,129 @@ fieldset {
   background: rgba(15, 10, 34, 0.85);
   color: var(--glow);
 }
+
+/* --- Phase 3: HUD, fishing, shop, recovery --- */
+
+#hud {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.coins {
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(15, 10, 34, 0.82);
+  color: var(--glow);
+  font-weight: bold;
+  border: 1px solid var(--glow);
+}
+
+.row.between { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.hint-inline { margin: 0 0 0.6rem; font-size: 0.85rem; opacity: 0.85; }
+
+/* Fishing prompt floats near the fountain, bottom-centre of the plaza. */
+.fish-prompt {
+  position: absolute;
+  bottom: 7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 12px;
+  box-shadow: 0 0 24px rgba(255, 207, 122, 0.4);
+}
+
+.fish-round {
+  position: absolute;
+  bottom: 6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 420px);
+  text-align: center;
+}
+
+.fish-timer { margin: 0 0 0.3rem; font-weight: bold; color: var(--accent); }
+.fish-result { margin: 0 0 0.6rem; min-height: 1.4em; }
+
+.fish-bar {
+  position: relative;
+  height: 26px;
+  border-radius: 13px;
+  background: #d8c69c;
+  border: 2px solid #8c7a55;
+  overflow: hidden;
+  margin-bottom: 0.7rem;
+}
+
+/* The glowing target zone sits in the middle third. */
+.fish-zone {
+  position: absolute;
+  top: 0;
+  left: 40%;
+  width: 20%;
+  height: 100%;
+  background: rgba(255, 207, 122, 0.55);
+  border-left: 2px solid var(--glow);
+  border-right: 2px solid var(--glow);
+}
+
+.fish-marker {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 6px;
+  height: calc(100% + 4px);
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.shop-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(255, 250, 240, 0.7);
+  border: 1px solid #c9b48a;
+}
+
+.shop-list .item-name { font-weight: bold; }
+.shop-list .item-kind { font-size: 0.78rem; opacity: 0.7; }
+.shop-list button { padding: 0.35rem 0.7rem; border-radius: 8px; }
+.shop-list li.owned { opacity: 0.7; }
+.shop-list .owned-tag { color: var(--accent); font-weight: bold; }
+
+#shop, #recovery {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+
+.recovery-code {
+  font-size: 1.6rem;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-align: center;
+  color: var(--accent);
+  margin: 0.5rem 0 0;
+  user-select: all;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fish-prompt { box-shadow: none; }
+}
