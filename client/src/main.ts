@@ -480,10 +480,15 @@ function wireRooms() {
   }
 
   async function returnToPlaza() {
+    editorModal.close();
+    // Leaving the room shouldn't block returning; ignore a noisy leave.
     try {
-      editorModal.close();
       await roomClient?.leave();
-      roomClient = undefined;
+    } catch (err) {
+      console.error("room leave failed (continuing):", err);
+    }
+    roomClient = undefined;
+    try {
       const room = await joinPlaza(identity);
       plazaRoom = room;
       // Re-wear the hat the player had on.
@@ -492,13 +497,14 @@ function wireRooms() {
       wireFishing(room);
       startGame(room);
       wireChat(room);
-      roomControls.hidden = true;
-      roomButton.hidden = false;
-      editorButton.hidden = true;
-      $("fishing").hidden = false;
     } catch (err) {
       console.error(err);
     }
+    // Restore the plaza HUD regardless, so the player is never stuck.
+    roomControls.hidden = true;
+    roomButton.hidden = false;
+    editorButton.hidden = true;
+    $("fishing").hidden = false;
   }
 }
 
