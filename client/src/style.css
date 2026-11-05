@@ -367,3 +367,6 @@ body.reduce-motion .fish-prompt { box-shadow: none; }
 #room-editor .shop-list button { width: auto; }
 
 .credit-line { margin: 0.8rem 0 0; font-size: 0.8rem; opacity: 0.7; }
+
+#visit-prompt { top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; width: min(92vw, 320px); }
+#visit-go { width: 100%; margin-top: 0.4rem; }

@@ -49,6 +49,16 @@
         <button type="button" id="settings-button" class="secondary" aria-label="Settings">⚙️</button>
       </div>
 
+      <!-- Visit prompt: appears when you click another ghost -->
+      <section id="visit-prompt" class="panel parchment" hidden aria-labelledby="visit-title">
+        <div class="row between">
+          <h2 id="visit-title">Visit a room?</h2>
+          <button type="button" id="visit-cancel" class="secondary" aria-label="Cancel">✕</button>
+        </div>
+        <p id="visit-text" class="hint-inline">Drop in on this ghost's haunted room?</p>
+        <button type="button" id="visit-go">Visit</button>
+      </section>
+
       <!-- Room controls: shown while visiting a haunted room -->
       <div id="room-controls" hidden>
         <button type="button" id="return-plaza" class="secondary">← Back to plaza</button>

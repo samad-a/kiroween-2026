@@ -28,13 +28,15 @@ export class PlazaScene extends Phaser.Scene {
   private reducedMotion = reduceMotion();
   private hauntingOverlay!: Phaser.GameObjects.Rectangle;
   private hauntingGlows: Phaser.GameObjects.Arc[] = [];
+  private onVisit?: (ownerPlayerId: number, name: string) => void;
 
   constructor() {
     super("plaza");
   }
 
-  init(data: { room: PlazaRoom }) {
+  init(data: { room: PlazaRoom; onVisit?: (ownerPlayerId: number, name: string) => void }) {
     this.room = data.room;
+    this.onVisit = data.onVisit;
   }
 
   preload() {
@@ -48,10 +50,12 @@ export class PlazaScene extends Phaser.Scene {
     this.addLanternGlows();
     this.addHauntingOverlay();
 
-    // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input).
+    // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input),
+    // or on another ghost (that click offers a room visit instead of walking).
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       const el = document.elementFromPoint(pointer.x, pointer.y);
-      if (el && el.closest("#chat")) return;
+      if (el && el.closest("#chat, #hud, #room-controls")) return;
+      if (this.input.hitTestPointer(pointer).length > 0) return; // clicked a ghost
       sendMove(this.room, { x: pointer.worldX, y: pointer.worldY });
     });
 
@@ -132,6 +136,20 @@ export class PlazaScene extends Phaser.Scene {
   private spawnSprite(id: string, ghost: GhostView): GhostSprite {
     const body = this.add.image(0, 0, ghostTextureKey(ghost.colour));
     const isMe = id === this.room.sessionId;
+
+    // Click another ghost to offer a visit to their room. A tiny drag tolerance
+    // keeps a click-to-walk on empty floor from also triggering a visit.
+    if (!isMe && this.onVisit) {
+      body.setInteractive({ useHandCursor: true });
+      let downAt = { x: 0, y: 0 };
+      body.on("pointerdown", (p: Phaser.Input.Pointer) => (downAt = { x: p.x, y: p.y }));
+      body.on("pointerup", (p: Phaser.Input.Pointer) => {
+        if (Math.hypot(p.x - downAt.x, p.y - downAt.y) > 8) return; // was a drag, not a click
+        const g = this.room.state.ghosts?.get(id);
+        const ownerId = g?.ownerId ? Number(g.ownerId) : NaN;
+        if (Number.isFinite(ownerId) && ownerId > 0) this.onVisit!(ownerId, g?.name ?? "A ghost");
+      });
+    }
     const label = this.add
       .text(0, -50, ghost.name, {
         fontFamily: "Trebuchet MS, sans-serif",

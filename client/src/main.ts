@@ -113,10 +113,10 @@ form.addEventListener("submit", async (event) => {
     // Register message handlers synchronously so the join-time wallet is not missed.
     wireWalletAndShop(room);
     wireFishing(room);
+    wireRooms(); // sets onVisitGhost before the scene is created
     startGame(room);
     wireChat(room);
     wireSettings();
-    wireRooms();
     startMusic(); // after the join gesture, honouring the mute preference
   } catch (error) {
     console.error(error);
@@ -140,7 +140,7 @@ function newGame(): Phaser.Game {
 function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
   currentGame?.destroy(true);
   currentGame = newGame();
-  currentGame.scene.add("plaza", PlazaScene, true, { room });
+  currentGame.scene.add("plaza", PlazaScene, true, { room, onVisit: onVisitGhost });
   currentGame.canvas.setAttribute("tabindex", "0");
   currentGame.canvas.focus();
 }
@@ -191,6 +191,8 @@ let identity: { name: string; colour: number } = { name: "", colour: 0 };
 let plazaRoom: PlazaRoom | undefined;
 let roomClient: HauntedRoomClient | undefined;
 let currentGame: Phaser.Game | undefined;
+/** Set by wireRooms; lets the plaza scene offer a visit when a ghost is clicked. */
+let onVisitGhost: ((ownerPlayerId: number, name: string) => void) | undefined;
 
 function setCoins(n: number) {
   $<HTMLSpanElement>("coin-count").textContent = String(n);
@@ -423,6 +425,28 @@ function wireRooms() {
     if (id !== null) void visitRoom(id, true);
   });
   returnButton.addEventListener("click", () => void returnToPlaza());
+
+  // Clicking another ghost in the plaza offers a visit to their room.
+  const visitPanel = $<HTMLElement>("visit-prompt");
+  const visitText = $<HTMLParagraphElement>("visit-text");
+  const visitModal = makeModal(visitPanel);
+  let pendingVisit: number | null = null;
+  onVisitGhost = (ownerPlayerId, name) => {
+    if (ownerPlayerId === myPlayerId()) return; // that's your own ghost
+    pendingVisit = ownerPlayerId;
+    visitText.textContent = `Drop in on ${name}'s haunted room?`;
+    visitModal.open();
+  };
+  $<HTMLButtonElement>("visit-cancel").addEventListener("click", () => {
+    pendingVisit = null;
+    visitModal.close();
+  });
+  $<HTMLButtonElement>("visit-go").addEventListener("click", () => {
+    const target = pendingVisit;
+    pendingVisit = null;
+    visitModal.close();
+    if (target !== null) void visitRoom(target, false);
+  });
   $<HTMLButtonElement>("room-editor-close").addEventListener("click", () => editorModal.close());
   editorButton.addEventListener("click", () => {
     renderDecorList();
