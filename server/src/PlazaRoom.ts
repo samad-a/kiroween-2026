@@ -7,9 +7,11 @@ import {
   FISH,
   FISH_EVENT,
   GHOST_COLOURS,
+  HAUNTING_DURATION_MS,
   MAX_GHOSTS_PER_PLAZA,
   MAX_MESSAGE_LENGTH,
   MESSAGE,
+  MIDNIGHT_INTERVAL_MS,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
   ROOM,
@@ -50,6 +52,9 @@ import type { DB } from "./db/index.js";
 export const TICK_MS = 50;
 /** How often to recheck whether the Caretaker's AI is back. */
 const HEALTH_INTERVAL_MS = 30_000;
+
+/** The Caretaker's in-character announcement when a haunting begins. */
+const HAUNTING_ANNOUNCE = "The clocks lean toward midnight… the lanterns dim. Stay close, dear spirits. 🕯️";
 
 /** Spawn on the open path below the fountain, spread out a little. */
 export function spawnPoint(random: () => number = Math.random): Point {
@@ -104,9 +109,19 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
   };
 
   onCreate() {
+    this.state.haunting = false; // explicit default so clients read a boolean from the start
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), TICK_MS);
     void this.refreshHealth();
     this.clock.setInterval(() => void this.refreshHealth(), HEALTH_INTERVAL_MS);
+    this.clock.setInterval(() => this.startHaunting(), MIDNIGHT_INTERVAL_MS);
+  }
+
+  /** Begin a midnight haunting: dim the plaza, announce it, and end it after the window. */
+  startHaunting() {
+    if (this.state.haunting) return;
+    this.state.haunting = true;
+    this.broadcast(CHAT_ROOM_MESSAGE.caretaker, { kind: "nudge", text: HAUNTING_ANNOUNCE } satisfies CaretakerNote);
+    this.clock.setTimeout(() => (this.state.haunting = false), HAUNTING_DURATION_MS);
   }
 
   onJoin(client: Client, options?: JoinOptions) {

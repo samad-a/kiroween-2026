@@ -351,6 +351,7 @@ body.reduce-motion .fish-prompt { box-shadow: none; }
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  z-index: 5;
 }
 
 .room-owner {

@@ -26,6 +26,8 @@ export class PlazaScene extends Phaser.Scene {
   private lastKeySend = 0;
   private wasKeyMoving = false;
   private reducedMotion = reduceMotion();
+  private hauntingOverlay!: Phaser.GameObjects.Rectangle;
+  private hauntingGlows: Phaser.GameObjects.Arc[] = [];
 
   constructor() {
     super("plaza");
@@ -44,6 +46,7 @@ export class PlazaScene extends Phaser.Scene {
   create() {
     this.add.image(0, 0, "plaza").setOrigin(0, 0);
     this.addLanternGlows();
+    this.addHauntingOverlay();
 
     // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input).
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -65,6 +68,31 @@ export class PlazaScene extends Phaser.Scene {
   update(time: number, deltaMs: number) {
     this.syncSprites(deltaMs / 1000);
     this.handleKeys(time);
+    this.syncHaunting();
+  }
+
+  private addHauntingOverlay() {
+    // A deep indigo veil over the whole plaza, invisible until a haunting begins.
+    this.hauntingOverlay = this.add
+      .rectangle(0, 0, PLAZA_WIDTH, PLAZA_HEIGHT, 0x0a0620, 0)
+      .setOrigin(0, 0)
+      .setDepth(200000);
+    // Extra lantern glow that only appears during a haunting.
+    for (const l of LANTERNS) {
+      this.hauntingGlows.push(
+        this.add.circle(l.x, l.y - 12, 64, 0xffcf7a, 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
+      );
+    }
+  }
+
+  private syncHaunting() {
+    const on = this.room.state.haunting === true;
+    const targetVeil = on ? 0.45 : 0;
+    const targetGlow = on ? 0.3 : 0;
+    // Ease toward the target so the lighting change is gentle (instant under reduced motion).
+    const step = this.reducedMotion ? 1 : 0.04;
+    this.hauntingOverlay.alpha += (targetVeil - this.hauntingOverlay.alpha) * step;
+    for (const g of this.hauntingGlows) g.alpha += (targetGlow - g.alpha) * step;
   }
 
   /** Create, move and remove sprites so they match the server state. */
@@ -84,7 +112,20 @@ export class PlazaScene extends Phaser.Scene {
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
       this.sprites.delete(id);
-      this.tweens.add({ targets: sprite.container, alpha: 0, duration: 400, onComplete: () => sprite.container.destroy() });
+      // Leave effect: dissolve — fade out while drifting up and shrinking.
+      if (this.reducedMotion) {
+        sprite.container.destroy();
+      } else {
+        this.tweens.add({
+          targets: sprite.container,
+          alpha: 0,
+          y: sprite.container.y - 30,
+          scale: 0.5,
+          duration: 450,
+          ease: "Sine.easeIn",
+          onComplete: () => sprite.container.destroy(),
+        });
+      }
     }
   }
 
@@ -117,7 +158,14 @@ export class PlazaScene extends Phaser.Scene {
 
     const container = this.add.container(ghost.x, ghost.y, [body, hat, label, bubble]).setAlpha(0);
 
-    this.tweens.add({ targets: container, alpha: 1, duration: this.reducedMotion ? 0 : 600 });
+    // Join effect: a small puff — fade and pop in from slightly small.
+    if (this.reducedMotion) {
+      container.setAlpha(1);
+    } else {
+      container.setScale(0.6);
+      this.tweens.add({ targets: container, alpha: 1, duration: 500 });
+      this.tweens.add({ targets: container, scale: 1, duration: 500, ease: "Back.easeOut" });
+    }
     if (!this.reducedMotion) {
       this.tweens.add({ targets: body, y: -6, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }

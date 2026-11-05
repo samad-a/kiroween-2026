@@ -135,6 +135,20 @@ describe("PlazaRoom", () => {
   });
 });
 
+describe("midnight haunting", () => {
+  it("turns the haunting flag on and is idempotent while active", async () => {
+    const room = await colyseus.createRoom<PlazaRoom>(PLAZA_ROOM);
+    room.autoDispose = false;
+    expect(room.state.haunting).toBe(false);
+    room.startHaunting();
+    expect(room.state.haunting).toBe(true);
+    // Calling again while active does not reset or stack the event.
+    room.startHaunting();
+    expect(room.state.haunting).toBe(true);
+    // The flag is cleared by clock.setTimeout after HAUNTING_DURATION_MS (not waited on here).
+  });
+});
+
 describe("spawnPoint", () => {
   it("never spawns inside a prop", () => {
     fc.assert(fc.property(fc.double({ min: 0, max: 0.9999, noNaN: true }), (r) => !hitsObstacle(spawnPoint(() => r))));

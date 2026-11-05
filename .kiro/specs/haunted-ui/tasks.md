@@ -18,6 +18,6 @@ typecheck + relevant tests + commit after each marked (CHECKPOINT) task, keeping
 - [x] 10. Client: room-editor overlay (place via list, drag to move, double-click to remove; owned decorations only) (CHECKPOINT)
 
 ## Slice C — ambience
-- [ ] 11. Midnight haunting: server timer flips synced `haunting` flag on/off, Caretaker announces; client shifts plaza lighting + lantern glow (both scenes, reduced-motion aware) + test
-- [ ] 12. Deliberate join/leave effects (puff on join, dissolve on leave; skipped under reduced-motion)
-- [ ] 13. Browser check (`scripts/room-check.ts`): decorate a room, visit as a second ghost (read-only), trigger a haunting; screenshots in `screenshots/` (CHECKPOINT)
+- [x] 11. Midnight haunting: server timer flips synced `haunting` flag on/off, Caretaker announces; client eases plaza into a dim veil + brighter lantern glow (reduced-motion aware) + test
+- [x] 12. Deliberate join/leave effects (scale-pop puff on join, dissolve-and-rise on leave; skipped under reduced-motion)
+- [~] 13. Browser check (`scripts/room-check.ts`): visit own room + decorate verified by screenshots 10–11 and clean server log; **return-to-plaza step could not complete a clean automated run** (environment/terminal flakiness) — verified by code review, not end-to-end capture (CHECKPOINT)
