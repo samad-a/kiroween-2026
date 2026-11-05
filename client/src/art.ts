@@ -88,3 +88,41 @@ export function plazaSvg(): string {
   ${LANTERNS.map((l) => lantern(l.x, l.y)).join("")}
 </svg>`;
 }
+
+// --- Hats (worn above a ghost) and decorations (placed in a room) ---
+
+/** Hand-drawn hat SVGs keyed by shop item id. ~40x30, anchored to sit on the head. */
+const HAT_SVGS: Record<string, string> = {
+  "hat-witch": `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="44" viewBox="0 0 48 44"><path d="M24 2 L34 34 L14 34 Z" fill="#4a2f70" stroke="#201038" stroke-width="2"/><ellipse cx="24" cy="36" rx="20" ry="5" fill="#2a1a48" stroke="#201038" stroke-width="2"/><rect x="19" y="26" width="10" height="5" fill="#ffcf7a"/></svg>`,
+  "hat-top": `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="40" viewBox="0 0 44 40"><rect x="14" y="4" width="16" height="26" rx="2" fill="#1c1430" stroke="#000" stroke-width="2" transform="rotate(-6 22 17)"/><ellipse cx="22" cy="32" rx="18" ry="5" fill="#1c1430" stroke="#000" stroke-width="2"/><rect x="13" y="22" width="18" height="5" fill="#6b3fa0" transform="rotate(-6 22 24)"/></svg>`,
+  "hat-flower": `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="26" viewBox="0 0 48 26"><path d="M6 20 Q24 6 42 20" fill="none" stroke="#5a7a4a" stroke-width="4"/><circle cx="12" cy="16" r="5" fill="#c98fb1"/><circle cx="24" cy="10" r="5" fill="#e6b8a8"/><circle cx="36" cy="16" r="5" fill="#b9a7ff"/></svg>`,
+  "hat-crown": `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="28" viewBox="0 0 48 28"><path d="M8 24 L8 10 L16 18 L24 6 L32 18 L40 10 L40 24 Z" fill="#e8e0d0" stroke="#8c7a55" stroke-width="2"/></svg>`,
+  "hat-halo": `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="24" viewBox="0 0 48 24"><ellipse cx="24" cy="12" rx="18" ry="6" fill="none" stroke="#ffcf7a" stroke-width="4" opacity="0.9"/></svg>`,
+  "hat-jack": `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="38" viewBox="0 0 40 38"><ellipse cx="20" cy="22" rx="18" ry="15" fill="#ffb86b" stroke="#a85a1a" stroke-width="2"/><rect x="18" y="4" width="4" height="7" fill="#5a7a4a"/><path d="M12 20 l5 -5 l5 5 Z M22 20 l5 -5 l5 5 Z" fill="#3a2410"/><path d="M11 30 q9 6 18 0" fill="none" stroke="#3a2410" stroke-width="2"/></svg>`,
+};
+
+export const hatTextureKey = (hatId: string): string => `hat-tex-${hatId}`;
+
+export const hatTextures = Object.entries(HAT_SVGS).map(([id, svg]) => ({
+  id,
+  key: hatTextureKey(id),
+  url: svgUrl(svg),
+}));
+
+/** Decoration SVGs keyed by shop item id, for placing in a room. */
+const DECOR_SVGS: Record<string, string> = {
+  "dec-lantern": `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72"><rect x="21" y="0" width="6" height="40" fill="#2a1f45"/><rect x="8" y="30" width="32" height="38" rx="6" fill="#ffcf7a" stroke="#2a1f45" stroke-width="3"/><path d="M6 30 L24 14 L42 30 Z" fill="#2a1f45"/></svg>`,
+  "dec-rug": `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="72" viewBox="0 0 120 72"><ellipse cx="60" cy="36" rx="56" ry="30" fill="#5a3f70" stroke="#2a1a48" stroke-width="3"/><ellipse cx="60" cy="36" rx="40" ry="18" fill="none" stroke="#b9a7ff" stroke-width="2" opacity="0.6"/></svg>`,
+  "dec-candle": `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="72" viewBox="0 0 40 72"><rect x="14" y="24" width="12" height="40" rx="2" fill="#efe6d0" stroke="#8c7a55" stroke-width="2"/><ellipse cx="20" cy="64" rx="14" ry="5" fill="#5a4a2a"/><path d="M20 24 q6 -10 0 -18 q-6 8 0 18Z" fill="#ffcf7a"/></svg>`,
+  "dec-cauldron": `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="64" viewBox="0 0 72 64"><ellipse cx="36" cy="40" rx="30" ry="22" fill="#1c1430" stroke="#000" stroke-width="3"/><ellipse cx="36" cy="24" rx="30" ry="9" fill="#2a1a48" stroke="#000" stroke-width="3"/><ellipse cx="36" cy="24" rx="22" ry="6" fill="#7fd6c2" opacity="0.8"/></svg>`,
+  "dec-portrait": `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="72" viewBox="0 0 56 72"><rect x="4" y="4" width="48" height="64" rx="3" fill="#2a1a48" stroke="#8c7a55" stroke-width="4"/><circle cx="28" cy="30" r="12" fill="#b9a7ff" opacity="0.8"/><path d="M12 60 q16 -18 32 0Z" fill="#b9a7ff" opacity="0.8"/></svg>`,
+  "dec-tree": `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="96" viewBox="0 0 72 96"><path d="M36 96 L36 40" stroke="#3a2a1a" stroke-width="8"/><path d="M36 60 q-18 -6 -26 -22 M36 48 q16 -8 24 -26 M36 40 q-14 -10 -18 -30" fill="none" stroke="#3a2a1a" stroke-width="5"/></svg>`,
+};
+
+export const decorTextureKey = (decorId: string): string => `decor-tex-${decorId}`;
+
+export const decorTextures = Object.entries(DECOR_SVGS).map(([id, svg]) => ({
+  id,
+  key: decorTextureKey(id),
+  url: svgUrl(svg),
+}));

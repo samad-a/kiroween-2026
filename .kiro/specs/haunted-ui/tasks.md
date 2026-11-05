@@ -10,9 +10,9 @@ typecheck + relevant tests + commit after each marked (CHECKPOINT) task, keeping
 - [x] 4. Contrast audit: all key pairs pass AA (ink/parchment 13.2, text/night 16–17, glow 13.3, headings 6.0, buttons 7.4); join-screen "restore with a code" + recovery copy button (CHECKPOINT)
 
 ## Slice B — rooms
-- [ ] 5. Shared rooms module (`shared/src/rooms.ts`): `PlacedItem`, `ROOM` message constants, `parseRoomLayout`/`parsePlacement`, midnight/haunting constants + tests
-- [ ] 6. SQLite v2 migration (`rooms` table, JSON layout) + rooms repository (`getLayout`/`saveLayout` with owned+in-bounds validation) + tests
-- [ ] 7. `Ghost.hat` + `ownerId` schema fields; `set-hat` intent validated against owned hats; draw the hat SVG above the ghost in `PlazaScene` (CHECKPOINT)
+- [x] 5. Shared rooms module (`shared/src/rooms.ts`): `PlacedItem`, `ROOM` message constants, `parseRoomLayout`/`parsePlacement`, midnight/haunting constants + tests
+- [x] 6. SQLite v2 migration (`rooms` table, JSON layout) + rooms repository (`getLayout`/`saveLayout` with owned+in-bounds validation) + tests
+- [x] 7. `Ghost.hat` + `ownerId` schema fields; `set-hat` intent validated against owned hats; draw the hat SVG above the ghost in `PlazaScene`; shop Wear/Take-off control (CHECKPOINT)
 - [ ] 8. `HauntedRoomState` + `HauntedRoom` (join with ownerPlayerId, synced items, owner-only place/move/remove, persistence) + tests
 - [ ] 9. Client: extract shared ghost rendering/movement; `RoomScene`; decoration art in `art.ts`; visit/return flow between plaza and room
 - [ ] 10. Client: room-editor overlay (place/move/remove, owned decorations only) (CHECKPOINT)

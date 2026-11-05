@@ -12,6 +12,7 @@ import {
   MESSAGE,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
+  ROOM,
   ROUND_MS,
   SHOP,
   SHOP_EVENT,
@@ -42,7 +43,7 @@ import { randomUUID } from "node:crypto";
 import { Ghost, PlazaState } from "./state.js";
 import { createModerator, type Moderator } from "./caretaker/moderate.js";
 import { getDb } from "./db/shared.js";
-import { addCoins, buyItem, displayRecoveryCode, getPlayer, ownedItems, resolvePlayer } from "./db/players.js";
+import { addCoins, buyItem, displayRecoveryCode, getPlayer, ownedItems, ownsItem, resolvePlayer } from "./db/players.js";
 import { rollCatch } from "./fishing.js";
 import type { DB } from "./db/index.js";
 
@@ -99,6 +100,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [FISH.cast]: (client: Client, payload: unknown) => this.handleFishCast(client, payload),
     [FISH.end]: (client: Client) => this.handleFishEnd(client),
     [SHOP.buy]: (client: Client, payload: unknown) => this.handleBuy(client, payload),
+    [ROOM.setHat]: (client: Client, payload: unknown) => this.handleSetHat(client, payload),
   };
 
   onCreate() {
@@ -124,6 +126,11 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     const player = resolvePlayer(this.db, guestId, options?.recoveryCode ?? null, this.random);
     this.playerIds.set(client.sessionId, player.id);
     client.userData = { playerId: player.id };
+    ghost.ownerId = String(player.id);
+    // Restore a previously-worn hat the player still owns.
+    if (options?.hat && ownsItem(this.db, player.id, options.hat) && getShopItem(options.hat)?.kind === "hat") {
+      ghost.hat = options.hat;
+    }
     this.sendWallet(client);
   }
 
@@ -257,6 +264,21 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     }
     const bought: ShopBought = { itemId: item.id, balance };
     client.send(SHOP_EVENT.bought, bought);
+  }
+
+  /** Wear an owned hat (or "" for none). Ignores unowned or non-hat ids. */
+  private handleSetHat(client: Client, payload: unknown) {
+    const playerId = this.playerIds.get(client.sessionId);
+    const ghost = this.state.ghosts.get(client.sessionId);
+    if (playerId === undefined || !ghost) return;
+    const hat = (payload as { hat?: unknown } | null)?.hat;
+    if (hat === "") {
+      ghost.hat = "";
+      return;
+    }
+    if (typeof hat === "string" && getShopItem(hat)?.kind === "hat" && ownsItem(this.db, playerId, hat)) {
+      ghost.hat = hat;
+    }
   }
 
   /** Advance moving ghosts and expire old chat bubbles. Public so tests can drive it. */

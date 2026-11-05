@@ -12,6 +12,8 @@ export interface JoinOptions {
   guestId?: string;
   /** A recovery code the player typed to restore an account on a new device. */
   recoveryCode?: string;
+  /** A previously-worn hat's shop item id, restored on join if still owned. */
+  hat?: string;
 }
 
 /** Client to server: "walk toward this point". Never an authoritative position. */

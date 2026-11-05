@@ -13,6 +13,10 @@ export const Ghost = schema(
     bubble: t.string(),
     /** When the bubble should disappear (ms epoch). Server-only use, but synced is harmless. */
     bubbleUntil: t.float64(),
+    /** Worn hat's shop item id, or empty for none. */
+    hat: t.string(),
+    /** This ghost's owner player id (as a string), so others can visit their room. */
+    ownerId: t.string(),
   },
   "Ghost",
 );
@@ -23,6 +27,8 @@ export const PlazaState = schema(
     ghosts: t.map(Ghost),
     /** True when the Caretaker's AI is unavailable and chat runs on the basic filter. */
     caretakerResting: t.boolean(),
+    /** True during a midnight haunting event; the client dims the plaza. */
+    haunting: t.boolean(),
   },
   "PlazaState",
 );

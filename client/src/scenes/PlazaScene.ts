@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
-import { LANTERNS, ghostTextureKey, ghostTextures, plazaSvg, svgUrl } from "../art";
+import { LANTERNS, ghostTextureKey, ghostTextures, hatTextureKey, hatTextures, plazaSvg, svgUrl } from "../art";
 import { sendMove, type GhostView, type PlazaRoom } from "../net";
 import { reduceMotion } from "../settings";
 
@@ -12,6 +12,8 @@ const KEY_SEND_MS = 100;
 interface GhostSprite {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Image;
+  hat: Phaser.GameObjects.Image;
+  shownHat: string;
   bubble: Phaser.GameObjects.Container;
   bubbleText: Phaser.GameObjects.Text;
   shownBubble: string;
@@ -36,6 +38,7 @@ export class PlazaScene extends Phaser.Scene {
   preload() {
     this.load.svg("plaza", svgUrl(plazaSvg()), { width: PLAZA_WIDTH, height: PLAZA_HEIGHT });
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
+    for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
   }
 
   create() {
@@ -76,6 +79,7 @@ export class PlazaScene extends Phaser.Scene {
       c.y += (ghost.y - c.y) * k;
       c.setDepth(c.y); // ghosts lower on screen draw in front
       this.updateBubble(sprite, ghost.bubble);
+      this.updateHat(sprite, ghost.hat);
     });
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
@@ -108,16 +112,29 @@ export class PlazaScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1);
     const bubble = this.add.container(0, -64, [bubbleText]).setVisible(false);
+    // Hat sits just above the ghost body; texture set in updateHat.
+    const hat = this.add.image(0, -30, hatTextureKey("hat-witch")).setVisible(false);
 
-    const container = this.add.container(ghost.x, ghost.y, [body, label, bubble]).setAlpha(0);
+    const container = this.add.container(ghost.x, ghost.y, [body, hat, label, bubble]).setAlpha(0);
 
     this.tweens.add({ targets: container, alpha: 1, duration: this.reducedMotion ? 0 : 600 });
     if (!this.reducedMotion) {
       this.tweens.add({ targets: body, y: -6, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
-    const sprite: GhostSprite = { container, body, bubble, bubbleText, shownBubble: "" };
+    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, bubbleText, shownBubble: "" };
+    this.updateHat(sprite, ghost.hat);
     this.sprites.set(id, sprite);
     return sprite;
+  }
+
+  private updateHat(sprite: GhostSprite, hatId: string) {
+    if (hatId === sprite.shownHat) return;
+    sprite.shownHat = hatId;
+    if (hatId && this.textures.exists(hatTextureKey(hatId))) {
+      sprite.hat.setTexture(hatTextureKey(hatId)).setVisible(true);
+    } else {
+      sprite.hat.setVisible(false);
+    }
   }
 
   private updateBubble(sprite: GhostSprite, text: string) {

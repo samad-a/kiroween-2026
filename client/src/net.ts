@@ -6,6 +6,7 @@ import {
   FISH_EVENT,
   MESSAGE,
   PLAZA_ROOM,
+  ROOM,
   SHOP,
   SHOP_EVENT,
   parseGuestId,
@@ -31,11 +32,14 @@ export interface GhostView {
   y: number;
   bubble: string;
   bubbleUntil: number;
+  hat: string;
+  ownerId: string;
 }
 
 export interface PlazaView {
   ghosts: { forEach(cb: (ghost: GhostView, id: string) => void): void; get(id: string): GhostView | undefined };
   caretakerResting: boolean;
+  haunting: boolean;
 }
 
 export type PlazaRoom = Room<unknown, PlazaView>;
@@ -125,6 +129,11 @@ export function onFishEnded(room: PlazaRoom, handler: (msg: FishEnded) => void):
 
 export function sendBuy(room: PlazaRoom, itemId: string): void {
   room.send(SHOP.buy, { itemId });
+}
+
+/** Wear an owned hat (shop item id), or "" to remove the current hat. */
+export function sendSetHat(room: PlazaRoom, hat: string): void {
+  room.send(ROOM.setHat, { hat });
 }
 
 /** Coins, owned items and the recovery code. Sent on join and after changes. */

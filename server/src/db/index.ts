@@ -32,6 +32,16 @@ const MIGRATIONS: ((db: DB) => void)[] = [
       );
     `);
   },
+  // v2: one personal room per player, layout stored as a JSON blob (read/written whole).
+  (db) => {
+    db.exec(`
+      CREATE TABLE rooms (
+        player_id  INTEGER PRIMARY KEY REFERENCES players(id),
+        layout     TEXT NOT NULL DEFAULT '[]',
+        updated_at INTEGER NOT NULL
+      );
+    `);
+  },
 ];
 
 /** Run any migrations the database has not seen yet, tracked by user_version. */

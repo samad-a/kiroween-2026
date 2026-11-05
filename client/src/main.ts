@@ -24,6 +24,7 @@ import {
   sendBuy,
   sendCast,
   sendChat,
+  sendSetHat,
   startFishing,
   type PlazaRoom,
 } from "./net";
@@ -171,6 +172,7 @@ const FOUNTAIN_CENTRE = { x: FOUNTAIN.x + FOUNTAIN.width / 2, y: FOUNTAIN.y + FO
 const FISH_RANGE = 160; // how close a ghost must be to cast
 
 const owned = new Set<string>();
+let wornHat = ""; // the shop item id of the currently-worn hat, or ""
 
 function setCoins(n: number) {
   $<HTMLSpanElement>("coin-count").textContent = String(n);
@@ -195,10 +197,24 @@ function wireWalletAndShop(room: PlazaRoom) {
       info.innerHTML = `<div class="item-name">${item.name}</div><div class="item-kind">${item.kind} · 🪙 ${item.price}</div>`;
       li.append(info);
       if (has) {
-        const tag = document.createElement("span");
-        tag.className = "owned-tag";
-        tag.textContent = "Owned";
-        li.append(tag);
+        if (item.kind === "hat") {
+          // Owned hats can be worn or taken off.
+          const wear = document.createElement("button");
+          wear.type = "button";
+          const wearing = wornHat === item.id;
+          wear.textContent = wearing ? "Take off" : "Wear";
+          wear.addEventListener("click", () => {
+            wornHat = wearing ? "" : item.id;
+            sendSetHat(room, wornHat);
+            renderShop();
+          });
+          li.append(wear);
+        } else {
+          const tag = document.createElement("span");
+          tag.className = "owned-tag";
+          tag.textContent = "Owned";
+          li.append(tag);
+        }
       } else {
         const buy = document.createElement("button");
         buy.type = "button";
