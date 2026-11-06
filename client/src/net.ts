@@ -10,6 +10,11 @@ import {
   type FriendsList,
   AREAS,
   type AreaId,
+  DASH,
+  DASH_EVENT,
+  type DashQueue,
+  type DashResults,
+  type DashStart,
   SEANCE,
   SEANCE_EVENT,
   type SeanceResult,
@@ -239,4 +244,58 @@ export function onSeanceShow(room: PlazaRoom, handler: (msg: SeanceShow) => void
 }
 export function onSeanceResult(room: PlazaRoom, handler: (msg: SeanceResult) => void): void {
   room.onMessage(SEANCE_EVENT.result, handler);
+}
+
+// --- Graveyard Dash ---
+
+export interface RacerView {
+  name: string;
+  colour: number;
+  hat: string;
+  pet: string;
+  x: number;
+  y: number;
+  boostUntil: number;
+  stunUntil: number;
+  timeMs: number;
+  place: number;
+}
+export interface DashView {
+  map: string;
+  phase: string;
+  clock: number;
+  racers: { forEach(cb: (r: RacerView, id: string) => void): void; get(id: string): RacerView | undefined; size: number };
+  wisps: { length: number; [i: number]: number };
+}
+export type DashRoomClient = Room<any, DashView>;
+
+export function joinDashQueue(room: PlazaRoom): void {
+  room.send(DASH.join);
+}
+export function leaveDashQueue(room: PlazaRoom): void {
+  room.send(DASH.leave);
+}
+export function raceAlone(room: PlazaRoom): void {
+  room.send(DASH.solo);
+}
+export function onDashQueue(room: PlazaRoom, handler: (q: DashQueue) => void): void {
+  room.onMessage(DASH_EVENT.queue, handler);
+}
+export function onDashStart(room: PlazaRoom, handler: (s: DashStart) => void): void {
+  room.onMessage(DASH_EVENT.start, handler);
+}
+
+/** Join the race room the plaza opened for us. */
+export async function joinDash(roomId: string, options: JoinOptions): Promise<DashRoomClient> {
+  const client = new Client(serverUrl());
+  const room = await client.joinById<DashView>(roomId, joinOptionsWithIdentity(options));
+  return room as DashRoomClient;
+}
+
+/** Steer: a held direction, or a point to head for. */
+export function sendDashIntent(room: DashRoomClient, intent: { dx: number; dy: number } | { x: number; y: number }): void {
+  room.send(DASH.intent, intent);
+}
+export function onDashResults(room: DashRoomClient, handler: (r: DashResults) => void): void {
+  room.onMessage(DASH_EVENT.results, handler);
 }

@@ -33,6 +33,14 @@ import {
   endSeance,
   onSeanceShow,
   onSeanceResult,
+  joinDash,
+  joinDashQueue,
+  leaveDashQueue,
+  raceAlone,
+  onDashQueue,
+  onDashStart,
+  onDashResults,
+  type DashRoomClient,
   placeItem,
   sendBuy,
   sendCast,
@@ -44,6 +52,13 @@ import {
 } from "./net";
 import {
   AREAS,
+  DASH_GATE,
+  DASH_MAPS,
+  DASH_MAP_IDS,
+  formatRaceTime,
+  isDashMapId,
+  type DashQueue,
+  type DashResults,
   FOUNTAIN_CENTRE,
   exitAt,
   type AreaId,
@@ -59,6 +74,7 @@ import {
 } from "@club-kiro/shared";
 import { PlazaScene } from "./scenes/PlazaScene";
 import { RoomScene } from "./scenes/RoomScene";
+import { DashScene, type DashHud } from "./scenes/DashScene";
 import { applyBodyClass, isTyping, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
 import { makeModal } from "./modal";
 import { ghostSvg, itemPreviewUrl, svgUrl } from "./art";
@@ -307,6 +323,8 @@ function bindPlazaMessages(room: PlazaRoom) {
   requestFriends(room);
   onFishStarted(room, (msg) => fishing.started(msg.roundMs));
   onFishCatch(room, (msg) => fishing.caught(getCatch(msg.catchId).name, msg.coins));
+  onDashQueue(room, (q) => renderDashGate(q));
+  onDashStart(room, (s) => void enterDash(s.roomId));
   onSeanceShow(room, (msg) => seance.show(msg));
   onSeanceResult(room, (msg) => seance.result(msg));
   onFishEnded(room, (msg) => {
@@ -452,7 +470,7 @@ function offerVisit(ownerPlayerId: number, name: string) {
 
 let switching = false;
 async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
-  if (switching) return;
+  if (switching || dashRoom) return; // finish the race first
   switching = true;
   try {
     fishing.stop();
@@ -504,7 +522,7 @@ async function returnToPlaza(force = false) {
 
 /** Walk from one public area to another (plaza, lighthouse, crypt). */
 async function travel(to: AreaId) {
-  if (switching || to === currentArea || !plazaRoom) return;
+  if (switching || dashRoom || to === currentArea || !plazaRoom) return;
   switching = true;
   const from = currentArea;
   fishing.stop();
@@ -546,6 +564,7 @@ const modals = {
   visit: makeModal($("visit-prompt"), () => (pendingVisit = null)),
   editor: makeModal($("room-editor")),
   friends: makeModal($("friends")),
+  dashResults: makeModal($("dash-results"), () => void (dashRoom && leaveDash())),
 };
 const toggle = (m: (typeof modals)[keyof typeof modals]) => (m.isOpen ? m.close() : m.open());
 
@@ -736,6 +755,7 @@ function wireUi() {
 
   fishing.wire();
   seance.wire();
+  wireDash();
 }
 
 // ---------- Ghost Fishing ----------
@@ -1054,6 +1074,183 @@ const seance = (() => {
     },
   };
 })();
+
+// ---------- Graveyard Dash ----------
+
+let dashRoom: DashRoomClient | undefined;
+let dashRecords: DashQueue["records"] = {};
+let dashQueued = false;
+let dashStartsAt = 0;
+let dashResultsShown = false;
+
+const mapName = (id: string) => (isDashMapId(id) ? DASH_MAPS[id].name : "Graveyard Dash");
+
+function renderDashGate(q?: DashQueue) {
+  if (q) {
+    dashQueued = q.names.length > 0;
+    dashStartsAt = q.startsAt;
+    if (Object.keys(q.records).length || !dashQueued) dashRecords = q.records;
+  }
+  const text = $("dash-queue-text");
+  const count = $("dash-queue-count");
+  if (dashQueued && q) {
+    text.textContent = q.names.length > 1 ? `In the queue: ${q.names.join(", ")}.` : "Waiting for another ghost… or race alone.";
+    count.hidden = false;
+    count.textContent = `${q.names.length}/4`;
+  } else if (!dashQueued) {
+    text.textContent = "Race up to three other ghosts through a haunted graveyard. Boost pads, wisps, gates and bats.";
+    count.hidden = true;
+  }
+  $("dash-join").textContent = dashQueued ? "Leave queue" : "Join the race";
+  const recs = DASH_MAP_IDS.filter((id) => dashRecords[id]).map((id) => `${DASH_MAPS[id].name} ${formatRaceTime(dashRecords[id]!)}`);
+  $("dash-records").textContent = recs.length ? `Your bests: ${recs.join(" · ")}` : "";
+}
+
+/** Leave the plaza for the race room the server just opened for us. */
+async function enterDash(roomId: string) {
+  if (switching || !plazaRoom) return;
+  switching = true;
+  fishing.stop();
+  seance.stop();
+  endTalk();
+  modals.shop.close();
+  dashQueued = false;
+  dashResultsShown = false;
+  try {
+    const leaving = plazaRoom;
+    plazaRoom = undefined;
+    await leaving.leave();
+    dashRoom = await joinDash(roomId, joinOptions());
+    const room = dashRoom;
+    onDashResults(room, (r) => showDashResults(r));
+    // Wait for the first state sync, so the scene draws the track the server picked.
+    await new Promise<void>((resolve) => {
+      if (room.state.map) return resolve();
+      const timer = window.setTimeout(resolve, 3000);
+      room.onStateChange.once(() => {
+        window.clearTimeout(timer);
+        resolve();
+      });
+    });
+    newGame().scene.add("dash", DashScene, true, { room, onHud: renderDashHud });
+    focusCanvas();
+    for (const id of ["fishing", "seance", "chat", "dash-gate", "room-controls", "help", "room-button"]) $(id).hidden = true;
+    $("exit-prompt").hidden = true;
+    $("dash-hud").hidden = false;
+    $("dash-map").textContent = mapName(room.state.map);
+    const best = isDashMapId(room.state.map) ? dashRecords[room.state.map] : undefined;
+    $("dash-best").textContent = best ? `Best ${formatRaceTime(best)}` : "No best yet";
+  } catch (err) {
+    console.error(err);
+    showToast("The graveyard gate stuck. Back to the square.");
+    dashRoom = undefined;
+    try {
+      enterArea(await joinArea("plaza", joinOptions()), "plaza");
+    } catch {
+      showToast("The town gates are stuck. Reload the page to try again.");
+    }
+  } finally {
+    switching = false;
+  }
+}
+
+function renderDashHud(h: DashHud) {
+  $("dash-time").textContent = formatRaceTime(Math.max(0, h.clock));
+  $("dash-hud").classList.toggle("boosted", h.boosted);
+  $("dash-hud").classList.toggle("stunned", h.stunned);
+  const cd = $("dash-countdown");
+  if (h.clock < 0) {
+    cd.hidden = false;
+    cd.textContent = String(Math.ceil(-h.clock / 1000));
+  } else if (h.clock < 700 && h.phase === "racing") {
+    cd.hidden = false;
+    cd.textContent = "GO!";
+  } else {
+    cd.hidden = true;
+  }
+  const bar = $("dash-progress");
+  if (bar.childElementCount !== h.progress.length) bar.replaceChildren(...h.progress.map(() => document.createElement("span")));
+  h.progress.forEach((p, i) => {
+    const dot = bar.children[i] as HTMLSpanElement;
+    dot.className = `dash-dot${p.me ? " me" : ""}`;
+    dot.style.left = `${p.at * 100}%`;
+    dot.title = p.name;
+  });
+}
+
+function showDashResults(r: DashResults) {
+  if (dashResultsShown) return;
+  dashResultsShown = true;
+  if (r.bestMs && isDashMapId(r.map)) dashRecords = { ...dashRecords, [r.map]: r.bestMs };
+  const me = dashRoom?.state.racers.get(dashRoom.sessionId)?.name;
+  $("dash-results-title").textContent = `${mapName(r.map)}: race over`;
+  $("dash-standings").replaceChildren(
+    ...r.standings.map((s) => {
+      const li = document.createElement("li");
+      if (s.name === me) li.className = "me";
+      li.textContent = s.name;
+      const time = document.createElement("span");
+      time.className = "time";
+      time.textContent = s.timeMs !== null ? formatRaceTime(s.timeMs) : "didn't finish";
+      li.append(time);
+      return li;
+    }),
+  );
+  const reward = $("dash-reward");
+  reward.replaceChildren();
+  if (r.newRecord) {
+    const rec = document.createElement("span");
+    rec.className = "new-record";
+    rec.textContent = "New personal best! ";
+    reward.append(rec);
+  }
+  reward.append(r.coins > 0 ? `+${r.coins} coins.` : "No coins this time.");
+  if (r.bestMs) reward.append(` Your best here: ${formatRaceTime(r.bestMs)}.`);
+  setCoins(r.balance);
+  $("dash-countdown").hidden = true;
+  modals.dashResults.open();
+}
+
+/** Back to the square after a race (or if you leave one early). */
+async function leaveDash() {
+  const leaving = dashRoom;
+  if (!leaving) return;
+  dashRoom = undefined; // first, so closing the results card doesn't call back in here
+  modals.dashResults.close();
+  $("dash-hud").hidden = true;
+  $("dash-countdown").hidden = true;
+  try {
+    await leaving?.leave();
+  } catch {
+    /* already closed */
+  }
+  try {
+    enterArea(await joinArea("plaza", joinOptions()), "plaza");
+  } catch (err) {
+    console.error(err);
+    showToast("The town gates are stuck. Reload the page to try again.");
+  }
+}
+
+function wireDash() {
+  $("dash-join").addEventListener("click", () => {
+    if (!plazaRoom) return;
+    if (dashQueued) leaveDashQueue(plazaRoom);
+    else joinDashQueue(plazaRoom);
+  });
+  $("dash-solo").addEventListener("click", () => plazaRoom && raceAlone(plazaRoom));
+  $("dash-back").addEventListener("click", () => void leaveDash());
+  // Show the gate panel only when standing at the Dash Gate in the plaza.
+  window.setInterval(() => {
+    const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+    const near = currentArea === "plaza" && !!me && Math.hypot(me.x - DASH_GATE.x, me.y - DASH_GATE.y) <= DASH_GATE.radius;
+    $("dash-gate").hidden = !near && !dashQueued;
+    if (dashQueued && dashStartsAt) {
+      const s = Math.max(0, Math.ceil((dashStartsAt - Date.now()) / 1000));
+      $("dash-queue-count").textContent = `Starts in ${s}s`;
+    }
+  }, 250);
+}
 
 // ---------- Music ----------
 

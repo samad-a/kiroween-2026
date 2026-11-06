@@ -51,6 +51,24 @@
 
       <p id="toast" class="toast surface" role="status" aria-live="polite" hidden></p>
 
+      <!-- Graveyard Dash: race HUD, 3-2-1, results -->
+      <div id="dash-hud" class="dash-hud surface" hidden>
+        <div class="dash-hud-row">
+          <p id="dash-map" class="fish-title"></p>
+          <p id="dash-time" class="dash-time">0:00.00</p>
+          <p id="dash-best" class="dash-best"></p>
+        </div>
+        <div id="dash-progress" class="dash-progress" aria-hidden="true"></div>
+        <p class="dash-tip"><kbd>WASD</kbd> or click ahead · pads and wisps boost · dodge the bats</p>
+      </div>
+      <p id="dash-countdown" class="dash-countdown" aria-live="assertive" hidden></p>
+      <section id="dash-results" class="dialog modal surface" hidden aria-labelledby="dash-results-title">
+        <div class="dialog-head"><h2 id="dash-results-title">Race over</h2></div>
+        <ol id="dash-standings" class="dash-standings"></ol>
+        <p id="dash-reward" class="sub"></p>
+        <button type="button" id="dash-back">Back to town</button>
+      </section>
+
       <!-- Top-right HUD: coins, shop, room, settings -->
       <div id="hud" class="hud-bar surface" hidden>
         <p id="coins" class="coins" aria-live="polite">
@@ -121,6 +139,20 @@
             <p id="seance-status" class="fish-result" role="status" aria-live="polite"></p>
             <div id="seance-runes" class="runes"></div>
             <div class="row"><button type="button" id="seance-stop" class="secondary">Leave the circle</button></div>
+          </div>
+        </div>
+
+        <!-- Graveyard Dash gate: queue up, or race alone -->
+        <div id="dash-gate" class="dash-gate surface" hidden role="group" aria-label="Graveyard Dash">
+          <div class="fish-head">
+            <p class="fish-title">Graveyard Dash</p>
+            <p id="dash-queue-count" class="fish-timer" hidden></p>
+          </div>
+          <p id="dash-queue-text" class="sub">Race up to three other ghosts through a haunted graveyard. Boost pads, wisps, gates and bats.</p>
+          <p id="dash-records" class="sub"></p>
+          <div class="row">
+            <button type="button" id="dash-join">Join the race</button>
+            <button type="button" id="dash-solo" class="secondary">Race alone</button>
           </div>
         </div>
 

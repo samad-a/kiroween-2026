@@ -1,5 +1,11 @@
 import {
   CRYPT_PILLARS,
+  DASH_GATE,
+  START_X,
+  TRACK_BOTTOM,
+  TRACK_HEIGHT,
+  TRACK_TOP,
+  type Track,
   FOUNTAIN_CENTRE,
   FOUNTAIN_FOOT,
   LAMPS,
@@ -280,6 +286,7 @@ function plazaProps(): PropSprite[] {
     ...trees.map(([x, y, s], i) => prop(`p-tree-${i}`, tree(x, y, s), x - 62 * s, y - 136 * s, 124 * s, 148 * s, y)),
     ...stones.map(([x, y, s], i) => prop(`p-stone-${i}`, tombstone(x, y, s), x - 22 * s, y - 42 * s, 44 * s, 50 * s, y)),
     ...pumpkins.map(([x, y], i) => prop(`p-pumpkin-${i}`, pumpkin(x, y), x - 22, y - 20, 44, 38, y + 10)),
+    dashGateProp(),
   ];
 }
 
@@ -679,4 +686,74 @@ export function areaProps(area: AreaId): PropSprite[] {
     ];
   }
   return plazaProps();
+}
+
+// --- Graveyard Dash ---
+
+/** The Dash Gate in the plaza: an iron arch with pennants. Walk through it to queue. */
+export function dashGateProp(): PropSprite {
+  const { x, y } = DASH_GATE;
+  const art = `<ellipse cx="${x}" cy="${y + 40}" rx="80" ry="12" fill="${C.shadow}"/>
+    <rect x="${x - 66}" y="${y - 70}" width="10" height="112" rx="4" fill="#1d1733"/>
+    <rect x="${x + 56}" y="${y - 70}" width="10" height="112" rx="4" fill="#1d1733"/>
+    <path d="M${x - 66} ${y - 64} Q${x} ${y - 124} ${x + 66} ${y - 64}" stroke="#1d1733" stroke-width="8" fill="none"/>
+    <rect x="${x - 54}" y="${y - 104}" width="108" height="24" rx="6" fill="#7138cc"/>
+    <text x="${x}" y="${y - 87}" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="800" font-size="13" fill="#fff">GRAVEYARD DASH</text>
+    ${[-40, -14, 14, 40].map((dx, i) => `<path d="M${x + dx} ${y - 76} l8 0 l-4 12 Z" fill="${["#ffb84d", "#7fe0c8", "#ff8fb1", "#b080ff"][i]}"/>`).join("")}
+    <path d="M${x - 50} ${y + 30} L${x + 50} ${y + 30}" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8" opacity="0.6"/>`;
+  return prop("p-dash-gate", art, x - 82, y - 130, 164, 186, y + 34);
+}
+
+const DASH_TILE = 1200;
+/** How many 1200px-wide background tiles a track needs (a single huge texture is too big for some GPUs). */
+export const dashTileCount = (t: Track) => Math.ceil(t.length / DASH_TILE);
+
+/** One background tile of a track: sky, fence, graveyard ground, mud, boost pads, start and finish. */
+export function dashTileSvg(t: Track, i: number): string {
+  const x0 = i * DASH_TILE;
+  const feetTop = TRACK_TOP + 36;
+  const stars = Array.from({ length: 20 }, (_, k) => `<circle cx="${(x0 + rand(i * 50 + k) * DASH_TILE).toFixed(0)}" cy="${(8 + rand(i * 70 + k) * 120).toFixed(0)}" r="1.2" fill="#fff" opacity="0.6"/>`).join("");
+  const hills = Array.from({ length: 5 }, (_, k) => `<ellipse cx="${x0 + k * 300 + 80}" cy="${190}" rx="${200 + rand(i * 9 + k) * 80}" ry="${50 + rand(i * 11 + k) * 30}" fill="#241c46"/>`).join("");
+  const graves = Array.from({ length: 14 }, (_, k) => {
+    const gx = x0 + k * 90 + rand(i * 13 + k) * 40;
+    return `<path d="M${gx - 8} ${feetTop - 10} L${gx - 8} ${feetTop - 28} Q${gx - 8} ${feetTop - 38} ${gx} ${feetTop - 38} Q${gx + 8} ${feetTop - 38} ${gx + 8} ${feetTop - 28} L${gx + 8} ${feetTop - 10} Z" fill="#3a2f5e"/>`;
+  }).join("");
+  const mud = t.mud.map((m) => `<rect x="${m.x}" y="${m.y}" width="${m.width}" height="${m.height}" rx="18" fill="#4a3426"/><rect x="${m.x + 10}" y="${m.y + 8}" width="${m.width - 20}" height="${Math.max(4, m.height - 16)}" rx="14" fill="#5a4030"/>`).join("");
+  const pads = t.pads
+    .map((p) => {
+      const cy = p.y + p.height / 2 - 36;
+      const chevrons = [0, 1, 2].map((k) => `<path d="M${p.x + 22 + k * 28} ${cy - 18} l18 18 l-18 18" stroke="#7fe0c8" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${0.5 + k * 0.2}"/>`).join("");
+      return `<rect x="${p.x}" y="${cy - 30}" width="${p.width}" height="60" rx="14" fill="#1f3a40" opacity="0.8"/>${chevrons}`;
+    })
+    .join("");
+  // A thin chequered strip painted on the ground (two squares wide), from the fence to the bottom edge.
+  const feetBottom = TRACK_BOTTOM + 36;
+  const checks = (x: number) =>
+    Array.from({ length: Math.ceil((feetBottom - feetTop) / 12) * 2 }, (_, k) => {
+      const row = Math.floor(k / 2);
+      const col = k % 2;
+      return `<rect x="${x + col * 12}" y="${feetTop + row * 12}" width="12" height="12" fill="${(row + col) % 2 ? "#f3eaff" : "#1d1733"}" opacity="0.75"/>`;
+    }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${DASH_TILE}" height="${TRACK_HEIGHT}" viewBox="${x0} 0 ${DASH_TILE} ${TRACK_HEIGHT}">
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.skyTop}"/><stop offset="1" stop-color="${C.skyLow}"/></linearGradient></defs>
+  <rect x="${x0}" y="0" width="${DASH_TILE}" height="210" fill="url(#sky)"/>
+  ${stars}${hills}
+  <rect x="${x0}" y="170" width="${DASH_TILE}" height="${TRACK_HEIGHT - 170}" fill="#2f2552"/>
+  ${graves}
+  <rect x="${x0}" y="${feetTop - 10}" width="${DASH_TILE}" height="6" rx="3" fill="#3a2c55"/>
+  <rect x="${x0}" y="${feetTop}" width="${DASH_TILE}" height="${TRACK_BOTTOM + 36 - feetTop + 10}" fill="#3a2d63"/>
+  ${Array.from({ length: 30 }, (_, k) => `<rect x="${x0 + k * 40}" y="${feetTop + 2}" width="2" height="8" fill="#4b3c7a"/>`).join("")}
+  <rect x="${x0}" y="${TRACK_BOTTOM + 46}" width="${DASH_TILE}" height="${TRACK_HEIGHT}" fill="#241c46"/>
+  ${mud}${pads}
+  ${checks(START_X + 30)}${checks(t.finishX)}
+  </svg>`;
+}
+
+/** Tombstones on the track, as walk-behind props. */
+export function dashProps(t: Track): PropSprite[] {
+  return t.tombstones.map((r, i) => {
+    const cx = r.x + r.width / 2;
+    const base = r.y + r.height;
+    return prop(`d-stone-${t.id}-${i}`, tombstone(cx, base, 1.25), cx - 30, base - 56, 60, 66, base);
+  });
 }
