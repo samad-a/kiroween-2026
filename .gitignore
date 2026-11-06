@@ -5,6 +5,7 @@ dist/
 *.db
 server/data/
 check.log
+commit.log
 smoke.log
 tmp_*
 .env
