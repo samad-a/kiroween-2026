@@ -34,7 +34,17 @@ Reuse what already exists: server-owned movement, the area/exit model and the fo
 ## Cost
 Roughly 250–350 credits: about the size of haunted rooms. The biggest risk is the plaza-to-race handoff (seat reservations), which is new to this codebase.
 
-## Open questions for you
-1. Payouts: 20 / 12 / 8 / 5 coins OK? (A hat costs 20–80.)
-2. Allow solo practice runs (no coins)?
-3. Where should the gate sit in the plaza? Proposal: bottom-left, by the tombstones.
+## Decisions (Nov 6)
+1. Payouts 20 / 12 / 8 / 5 by place; solo finish 5; new personal best +5.
+2. Solo runs allowed and paid (less).
+3. Gate in the plaza's lower left, by the tombstones.
+4. Three tracks, picked at random per race, each generated from a fixed seed so everyone gets the same layout. Personal bests are kept per track (`dash_records` table).
+
+## Mechanics (what makes it fun)
+- **Speed:** 300 px/s base (plaza is 180). Hold a direction or click ahead.
+- **Boost pads** (chevrons on the ground): 1.75x for 1.5 s. **Wisps** float above the track: grab one for the same boost; they come back after 4 s.
+- **Mud:** half speed while you're in it.
+- **Tombstones:** solid. Hitting one slides you along it instead of stopping dead.
+- **Crypt gates:** walls with a gate that opens and closes on a rhythm. Wait for it, or take the longer way round through mud.
+- **Bats:** swoop up and down across the track. Touching one stuns you for 0.6 s and knocks you back a little.
+- Handoff uses `matchMaker.createRoom` and `joinById` (no custom seat reservations): the plaza tells queued players the new room id, and the race room only admits the queued players.

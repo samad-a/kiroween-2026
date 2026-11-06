@@ -11,3 +11,4 @@ export * from "./friends.js";
 export * from "./seance.js";
 export * from "./areas.js";
 export * from "./pets.js";
+export * from "./dash.js";
