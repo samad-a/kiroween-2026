@@ -1,5 +1,8 @@
 import {
-  OBSTACLES,
+  CRYPT_PILLARS,
+  FOUNTAIN_CENTRE,
+  FOUNTAIN_FOOT,
+  LAMPS,
   PET_COLOURS,
   PET_ITEMS,
   PLAZA_HEIGHT,
@@ -42,16 +45,12 @@ const C = {
   shadow: "rgba(8, 4, 20, 0.35)",
 };
 
-const [fountain, tower] = OBSTACLES as [(typeof OBSTACLES)[number], (typeof OBSTACLES)[number]];
+/** Where the fountain and clock tower are drawn. Their hitboxes are smaller footprints (shared OBSTACLES). */
+const fountain = { x: FOUNTAIN_CENTRE.x - 80, y: FOUNTAIN_CENTRE.y - 60, width: 160, height: 120 };
+const tower = { x: 940, y: 80, width: 100, height: 200 };
 
 /** Lantern positions, also used by the scene for flickering glows. */
-export const LANTERNS = [
-  { x: 120, y: 200 },
-  { x: 420, y: 160 },
-  { x: 780, y: 160 },
-  { x: 160, y: 560 },
-  { x: 1060, y: 560 },
-];
+export const LANTERNS = LAMPS;
 
 /** Deterministic pseudo-random in 0..1, so the scenery is the same for everyone. */
 const rand = (n: number): number => {
@@ -156,13 +155,11 @@ function pumpkin(x: number, y: number): string {
   </g>`;
 }
 
-/** The haunted plaza background, with props placed on the obstacle rects. */
+/** The plaza's flat ground and backdrop. Upright props are separate sprites (see plazaProps). */
 export function plazaSvg(): string {
   const f = fountain;
-  const t = tower;
   const fx = f.x + f.width / 2;
   const fy = f.y + f.height / 2;
-  const tc = t.x + t.width / 2;
   const horizon = 158;
   const stars = Array.from({ length: 60 }, (_, i) => {
     const r = 0.6 + rand(900 + i) * 1.1;
@@ -197,8 +194,16 @@ export function plazaSvg(): string {
   <ellipse cx="${fx}" cy="${fy + 30}" rx="300" ry="150" fill="${C.plazaDisc}"/>
   ${rings}
   ${hedge(horizon + 8)}
-  <!-- clock tower -->
-  <ellipse cx="${tc}" cy="${t.y + t.height + 2}" rx="74" ry="12" fill="${C.shadow}"/>
+  ${seanceCircle(SEANCE_SPOT.x, SEANCE_SPOT.y)}
+</svg>`;
+}
+
+// --- Plaza props: drawn as separate sprites so ghosts can walk behind them ---
+
+function towerArt(): string {
+  const t = tower;
+  const tc = t.x + t.width / 2;
+  return `<ellipse cx="${tc}" cy="${t.y + t.height + 2}" rx="74" ry="12" fill="${C.shadow}"/>
   <g transform="rotate(-3 ${tc} ${t.y + t.height})">
     <rect x="${t.x + 6}" y="${t.y}" width="${t.width - 12}" height="${t.height}" rx="6" fill="#2d2454"/>
     <rect x="${tc}" y="${t.y}" width="${t.width / 2 - 6}" height="${t.height}" rx="6" fill="#241c46"/>
@@ -211,13 +216,14 @@ export function plazaSvg(): string {
     <circle cx="${tc}" cy="${t.y + 48}" r="3" fill="#2d2454"/>
     <rect x="${tc - 8}" y="${t.y + 116}" width="16" height="22" rx="8" fill="${C.window}" opacity="0.85"/>
     <path d="M${tc - 15} ${t.y + t.height} L${tc - 15} ${t.y + 170} Q${tc} ${t.y + 152} ${tc + 15} ${t.y + 170} L${tc + 15} ${t.y + t.height} Z" fill="#15102b"/>
-  </g>
-  <!-- framing trees, tombstones, pumpkins -->
-  ${tree(40, 690, 1.1)}${tree(1170, 300, 0.9)}${tree(1160, 700, 1)}
-  ${tombstone(98, 690)}${tombstone(140, 700, 0.75)}${tombstone(880, 228, 0.7)}${tombstone(1100, 690, 0.8)}
-  ${pumpkin(fx - 128, fy + 100)}${pumpkin(fx + 132, fy + 96)}${pumpkin(330, 650)}
-  <!-- fountain: round basin, tiered column, water arcs -->
-  <ellipse cx="${fx}" cy="${fy + 40}" rx="${f.width / 2 + 14}" ry="${f.height / 3 + 10}" fill="${C.shadow}"/>
+  </g>`;
+}
+
+function fountainArt(): string {
+  const f = fountain;
+  const fx = f.x + f.width / 2;
+  const fy = f.y + f.height / 2;
+  return `<ellipse cx="${fx}" cy="${fy + 40}" rx="${f.width / 2 + 14}" ry="${f.height / 3 + 10}" fill="${C.shadow}"/>
   <ellipse cx="${fx}" cy="${fy + 26}" rx="${f.width / 2 + 4}" ry="${f.height / 3 + 4}" fill="${C.stoneDark}"/>
   <ellipse cx="${fx}" cy="${fy + 16}" rx="${f.width / 2 + 4}" ry="${f.height / 3 + 2}" fill="${C.stone}"/>
   <ellipse cx="${fx}" cy="${fy + 14}" rx="${f.width / 2 - 6}" ry="${f.height / 3 - 6}" fill="${C.waterDark}"/>
@@ -230,10 +236,51 @@ export function plazaSvg(): string {
   <ellipse cx="${fx}" cy="${fy - 32}" rx="26" ry="7" fill="${C.water}"/>
   <ellipse cx="${fx}" cy="${fy - 34}" rx="6" ry="4" fill="${C.stoneTop}"/>
   <path d="M${fx} ${fy - 40} Q${fx - 30} ${fy - 72} ${fx - 46} ${fy + 4} M${fx} ${fy - 40} Q${fx + 30} ${fy - 72} ${fx + 46} ${fy + 4}"
-        fill="none" stroke="${C.waterLit}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
-  ${seanceCircle(SEANCE_SPOT.x, SEANCE_SPOT.y)}
-  ${LANTERNS.map((l) => lamp(l.x, l.y)).join("")}
-</svg>`;
+        fill="none" stroke="${C.waterLit}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>`;
+}
+
+/**
+ * A prop drawn as its own sprite. `svg` crops the world-coordinate drawing to the
+ * prop's box (via viewBox), so the art code stays in world coordinates.
+ * `depth` is the ground line it stands on: ghosts whose feet are above it are behind it.
+ */
+export interface PropSprite {
+  key: string;
+  svg: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  depth: number;
+}
+
+function prop(key: string, content: string, x: number, y: number, w: number, h: number, depth: number): PropSprite {
+  return {
+    key,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">${content}</svg>`,
+    x,
+    y,
+    w,
+    h,
+    depth,
+  };
+}
+
+function plazaProps(): PropSprite[] {
+  const f = fountain;
+  const fx = f.x + f.width / 2;
+  const fy = f.y + f.height / 2;
+  const trees: [number, number, number][] = [[40, 690, 1.1], [1170, 300, 0.9], [1160, 700, 1]];
+  const stones: [number, number, number][] = [[98, 690, 1], [140, 700, 0.75], [880, 228, 0.7], [1100, 690, 0.8]];
+  const pumpkins: [number, number][] = [[fx - 128, fy + 100], [fx + 132, fy + 96], [330, 650]];
+  return [
+    prop("p-tower", towerArt(), 912, -24, 156, 326, tower.y + tower.height - 4),
+    prop("p-fountain", fountainArt(), fx - 106, fy - 80, 212, 174, FOUNTAIN_FOOT.y + FOUNTAIN_FOOT.height / 2),
+    ...LANTERNS.map((l, i) => prop(`p-lamp-${i}`, lamp(l.x, l.y), l.x - 22, l.y - 44, 44, 144, l.y + 87)),
+    ...trees.map(([x, y, s], i) => prop(`p-tree-${i}`, tree(x, y, s), x - 62 * s, y - 136 * s, 124 * s, 148 * s, y)),
+    ...stones.map(([x, y, s], i) => prop(`p-stone-${i}`, tombstone(x, y, s), x - 22 * s, y - 42 * s, 44 * s, 50 * s, y)),
+    ...pumpkins.map(([x, y], i) => prop(`p-pumpkin-${i}`, pumpkin(x, y), x - 22, y - 20, 44, 38, y + 10)),
+  ];
 }
 
 /** Candle positions around the séance circle, also used for their glows. */
@@ -532,23 +579,6 @@ export function lighthouseSvg(): string {
   <rect x="0" y="196" width="860" height="4" rx="2" fill="#3a2c55"/>${fence}
   <g fill="#2c2350">${[[80, 340, 46], [460, 600, 60], [700, 470, 40], [1120, 640, 54]].map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${(r as number) / 3}"/>`).join("")}</g>
   <path d="M${W + 20} 520 Q900 560 700 480 Q520 420 360 470" stroke="${C.path}" stroke-width="80" stroke-linecap="round" fill="none" opacity="0.7"/>
-  <!-- boulder and rock (solid) -->
-  <ellipse cx="355" cy="318" rx="62" ry="14" fill="${C.shadow}"/>
-  <path d="M296 316 Q300 270 344 262 Q392 258 410 300 Q414 320 400 322 L304 322 Z" fill="#4e4284"/>
-  <path d="M296 316 Q300 270 344 262 Q330 286 334 322 L304 322 Z" fill="#5f529c"/>
-  <ellipse cx="165" cy="560" rx="52" ry="12" fill="${C.shadow}"/>
-  <path d="M120 556 Q126 524 160 520 Q200 520 210 552 Q206 562 196 562 L128 562 Z" fill="#4e4284"/>
-  <!-- the lighthouse -->
-  <ellipse cx="905" cy="300" rx="96" ry="20" fill="${C.shadow}"/>
-  <ellipse cx="905" cy="292" rx="84" ry="22" fill="#4e4284"/>
-  <path d="M862 290 L878 90 L932 90 L948 290 Z" fill="#e8e1f7"/>
-  <path d="M862 290 L878 90 L896 90 L886 290 Z" fill="#cfc6ea"/>
-  ${[0, 1, 2].map((i) => `<path d="M${866 - i * -5.3} ${250 - i * 60} L${944 - i * 5.3} ${250 - i * 60} L${941 - i * 5.3} ${222 - i * 60} L${869 + i * 5.3} ${222 - i * 60} Z" fill="#7138cc"/>`).join("")}
-  <rect x="893" y="246" width="24" height="44" rx="12" fill="#2b2348"/>
-  <rect x="866" y="80" width="78" height="12" rx="4" fill="#2b2348"/>
-  <rect x="878" y="44" width="54" height="38" rx="6" fill="#ffe2a3"/>
-  <rect x="878" y="44" width="16" height="38" rx="5" fill="#fff4d6"/>
-  <path d="M870 46 Q905 10 940 46 Z" fill="#2b2348"/>
   ${signpost(1128, 492, "Town Square", false)}
 </svg>`;
 }
@@ -558,7 +588,8 @@ export function cryptSvg(): string {
     Array.from({ length: 11 }, (_, col) => {
       const x = col * 120 - (row % 2) * 60;
       const y = 250 + row * 48;
-      return `<rect x="${x + 2}" y="${y + 2}" width="116" height="44" rx="6" fill="${rand(row * 13 + col) > 0.5 ? "#2c2546" : "#282140"}"/>`;
+      // Floor flagstones: lighter and larger than the wall bricks, so floor and wall read apart.
+      return `<rect x="${x + 3}" y="${y + 3}" width="114" height="42" rx="8" fill="${rand(row * 13 + col) > 0.5 ? "#3d3368" : "#382f61"}"/>`;
     }).join(""),
   ).join("");
   const alcoves = [140, 420, 780, 1060]
@@ -568,20 +599,6 @@ export function cryptSvg(): string {
       <path d="M${x} 166 Q${x + 6} 156 ${x} 146 Q${x - 6} 156 ${x} 166 Z" fill="#7fe0c8"/>
       <ellipse cx="${x}" cy="226" rx="22" ry="8" fill="#2e2452"/>
       <path d="M${x - 14} 222 Q${x - 14} 198 ${x} 196 Q${x + 14} 198 ${x + 14} 222 Z" fill="#4e4284"/>`,
-    )
-    .join("");
-  const pillars = [
-    [285, 290],
-    [915, 290],
-    [285, 540],
-    [915, 540],
-  ]
-    .map(
-      ([x, y]) => `<ellipse cx="${x}" cy="${(y as number) + 42}" rx="40" ry="10" fill="${C.shadow}"/>
-      <rect x="${(x as number) - 30}" y="${(y as number) + 10}" width="60" height="30" rx="6" fill="#4e4284"/>
-      <rect x="${(x as number) - 20}" y="${(y as number) - 150}" width="40" height="164" rx="6" fill="#5f529c"/>
-      <rect x="${(x as number) - 20}" y="${(y as number) - 150}" width="14" height="164" rx="5" fill="#6c62a0"/>
-      <rect x="${(x as number) - 30}" y="${(y as number) - 162}" width="60" height="16" rx="6" fill="#4e4284"/>`,
     )
     .join("");
   const webs = [
@@ -595,17 +612,11 @@ export function cryptSvg(): string {
   ${Array.from({ length: 6 }, (_, r) => Array.from({ length: 13 }, (_, c) => `<rect x="${c * 100 - (r % 2) * 50 + 2}" y="${r * 40 + 2}" width="96" height="36" rx="4" fill="#241d3f"/>`).join("")).join("")}
   ${alcoves}
   <rect x="0" y="236" width="${W}" height="16" fill="#2e2452"/>
+  <rect x="0" y="250" width="${W}" height="${H - 250}" fill="#2a2249"/>
   ${tiles}
   <rect x="0" y="250" width="${W}" height="12" fill="#120e24" opacity="0.6"/>
   <!-- stairs up to the town on the left -->
   ${[0, 1, 2, 3].map((i) => `<rect x="${0}" y="${420 + i * 26}" width="${70 - i * 12}" height="24" rx="4" fill="${i % 2 ? "#3a3062" : "#433a72"}"/>`).join("")}
-  <!-- the sarcophagus (solid) -->
-  <ellipse cx="600" cy="436" rx="100" ry="14" fill="${C.shadow}"/>
-  <rect x="520" y="372" width="160" height="60" rx="10" fill="#4e4284"/>
-  <rect x="512" y="358" width="176" height="22" rx="10" fill="#6a5c9e"/>
-  <path d="M584 362 L584 352 Q600 336 616 352 L616 362 Z" fill="#b080ff" opacity="0.8"/>
-  <circle cx="595" cy="352" r="1.8" fill="#2e2452"/><circle cx="605" cy="352" r="1.8" fill="#2e2452"/>
-  ${pillars}
   ${webs}
   ${signpost(84, 404, "Town Square", true)}
 </svg>`;
@@ -614,4 +625,58 @@ export function cryptSvg(): string {
 /** The background art for a public area. */
 export function areaSvg(area: AreaId): string {
   return area === "lighthouse" ? lighthouseSvg() : area === "crypt" ? cryptSvg() : plazaSvg();
+}
+
+// --- Lighthouse and crypt props (walk-behind sprites) ---
+
+function lighthouseArt(): string {
+  return `<ellipse cx="905" cy="300" rx="96" ry="20" fill="${C.shadow}"/>
+  <ellipse cx="905" cy="292" rx="84" ry="22" fill="#4e4284"/>
+  <path d="M862 290 L878 90 L932 90 L948 290 Z" fill="#e8e1f7"/>
+  <path d="M862 290 L878 90 L896 90 L886 290 Z" fill="#cfc6ea"/>
+  ${[0, 1, 2].map((i) => `<path d="M${866 + i * 5.3} ${250 - i * 60} L${944 - i * 5.3} ${250 - i * 60} L${941 - i * 5.3} ${222 - i * 60} L${869 + i * 5.3} ${222 - i * 60} Z" fill="#7138cc"/>`).join("")}
+  <rect x="893" y="246" width="24" height="44" rx="12" fill="#2b2348"/>
+  <rect x="866" y="80" width="78" height="12" rx="4" fill="#2b2348"/>
+  <rect x="878" y="44" width="54" height="38" rx="6" fill="#ffe2a3"/>
+  <rect x="878" y="44" width="16" height="38" rx="5" fill="#fff4d6"/>
+  <path d="M870 46 Q905 10 940 46 Z" fill="#2b2348"/>`;
+}
+
+const boulderArt = `<ellipse cx="355" cy="318" rx="62" ry="14" fill="${C.shadow}"/>
+  <path d="M296 316 Q300 270 344 262 Q392 258 410 300 Q414 320 400 322 L304 322 Z" fill="#4e4284"/>
+  <path d="M296 316 Q300 270 344 262 Q330 286 334 322 L304 322 Z" fill="#5f529c"/>`;
+
+const rockArt = `<ellipse cx="165" cy="560" rx="52" ry="12" fill="${C.shadow}"/>
+  <path d="M120 556 Q126 524 160 520 Q200 520 210 552 Q206 562 196 562 L128 562 Z" fill="#4e4284"/>`;
+
+function pillarArt(x: number, y: number): string {
+  return `<ellipse cx="${x}" cy="${y + 42}" rx="40" ry="10" fill="${C.shadow}"/>
+  <rect x="${x - 30}" y="${y + 10}" width="60" height="30" rx="6" fill="#4e4284"/>
+  <rect x="${x - 20}" y="${y - 150}" width="40" height="164" rx="6" fill="#5f529c"/>
+  <rect x="${x - 20}" y="${y - 150}" width="14" height="164" rx="5" fill="#6c62a0"/>
+  <rect x="${x - 30}" y="${y - 162}" width="60" height="16" rx="6" fill="#4e4284"/>`;
+}
+
+const sarcophagusArt = `<ellipse cx="600" cy="436" rx="100" ry="14" fill="${C.shadow}"/>
+  <rect x="520" y="372" width="160" height="60" rx="10" fill="#4e4284"/>
+  <rect x="512" y="358" width="176" height="22" rx="10" fill="#6a5c9e"/>
+  <path d="M584 362 L584 352 Q600 336 616 352 L616 362 Z" fill="#b080ff" opacity="0.8"/>
+  <circle cx="595" cy="352" r="1.8" fill="#2e2452"/><circle cx="605" cy="352" r="1.8" fill="#2e2452"/>`;
+
+/** The upright props of an area, each its own depth-sorted sprite. */
+export function areaProps(area: AreaId): PropSprite[] {
+  if (area === "lighthouse") {
+    return [
+      prop("l-lighthouse", lighthouseArt(), 800, 0, 210, 326, 292),
+      prop("l-boulder", boulderArt, 288, 252, 134, 86, 316),
+      prop("l-rock", rockArt, 108, 512, 114, 64, 558),
+    ];
+  }
+  if (area === "crypt") {
+    return [
+      prop("c-sarcophagus", sarcophagusArt, 496, 330, 208, 124, 407),
+      ...CRYPT_PILLARS.map((p, i) => prop(`c-pillar-${i}`, pillarArt(p.x, p.y), p.x - 42, p.y - 166, 84, 222, p.y + 25)),
+    ];
+  }
+  return plazaProps();
 }

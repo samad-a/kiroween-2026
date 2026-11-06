@@ -1,7 +1,17 @@
 import Phaser from "phaser";
-import { AREAS, MESSAGE, OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget, type AreaId } from "@club-kiro/shared";
+import {
+  AREAS,
+  FOUNTAIN_CENTRE,
+  GHOST_FOOT_OFFSET,
+  MESSAGE,
+  PLAZA_HEIGHT,
+  PLAZA_WIDTH,
+  keysToTarget,
+  type AreaId,
+} from "@club-kiro/shared";
 import {
   AREA_LIGHTS,
+  areaProps,
   LANTERNS,
   LIGHTHOUSE_LAMP,
   SEANCE_CANDLES,
@@ -39,9 +49,10 @@ const SMOOTHING = 12;
 /** Minimum gap between keyboard move messages. */
 const KEY_SEND_MS = 100;
 
-const FOUNTAIN = OBSTACLES[0]!;
-const FOUNTAIN_X = FOUNTAIN.x + FOUNTAIN.width / 2;
-const FOUNTAIN_Y = FOUNTAIN.y + FOUNTAIN.height / 2;
+const FOUNTAIN_X = FOUNTAIN_CENTRE.x;
+const FOUNTAIN_Y = FOUNTAIN_CENTRE.y;
+/** Ghosts sort by their feet, the same line props sort by, so you can float behind things. */
+const feetDepth = (y: number) => y + GHOST_FOOT_OFFSET;
 
 /** Friendly tips the Caretaker offers now and then. Purely client-side flavour. */
 const CARETAKER_TIPS = [
@@ -110,6 +121,12 @@ export class PlazaScene extends Phaser.Scene {
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
     for (const t of petTextures) this.load.svg(t.key, t.url);
+    for (const p of this.props) this.load.svg(p.key, svgUrl(p.svg), { width: p.w, height: p.h });
+  }
+
+  /** Upright props for this area, drawn as depth-sorted sprites. */
+  private get props() {
+    return areaProps(this.area);
   }
 
   create() {
@@ -122,6 +139,8 @@ export class PlazaScene extends Phaser.Scene {
     } else {
       this.addAreaLights();
     }
+    // Props sort against ghosts by their ground line: a ghost above it is behind it.
+    for (const p of this.props) this.add.image(p.x, p.y, p.key).setOrigin(0, 0).setDepth(p.depth);
     this.addAmbience();
     if (this.isPlaza) this.addCaretaker();
     full("vignette").setDepth(150000);
@@ -178,7 +197,7 @@ export class PlazaScene extends Phaser.Scene {
   private placeCaretaker() {
     const a = this.caretakerAngle;
     this.caretaker.setPosition(FOUNTAIN_X + Math.cos(a) * 330, FOUNTAIN_Y + 40 + Math.sin(a) * 180);
-    this.caretaker.setDepth(this.caretaker.y);
+    this.caretaker.setDepth(this.caretaker.y + 58); // its shadow line
   }
 
   private caretakerTalking = false;
@@ -338,11 +357,11 @@ export class PlazaScene extends Phaser.Scene {
       sprite.facing = face(sprite.body, sprite.hat, ghost.x - c.x, sprite.facing);
       c.x += (ghost.x - c.x) * k;
       c.y += (ghost.y - c.y) * k;
-      c.setDepth(c.y); // ghosts lower on screen draw in front
+      c.setDepth(feetDepth(c.y)); // lower on screen draws in front, props included
       this.updateBubble(sprite, ghost.bubble);
       this.updateHat(sprite, ghost.hat);
       sprite.pet = syncPet(this, sprite.pet, ghost.pet ?? "", c.x, c.y, this.reducedMotion);
-      sprite.pet?.update(dt, c.x, c.y, sprite.facing, c.y - 1);
+      sprite.pet?.update(dt, c.x, c.y, sprite.facing, feetDepth(c.y) - 0.5);
       if (!this.greeted && id === this.room.sessionId) {
         this.greeted = true;
         this.caretakerSay(`Welcome to the town, ${ghost.name}. Make yourself at home.`);

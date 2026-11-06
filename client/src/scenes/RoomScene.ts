@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { ROOM_HEIGHT, ROOM_WALK_TOP, ROOM_WIDTH, keysToTarget } from "@club-kiro/shared";
+import { GHOST_FOOT_OFFSET, ROOM_HEIGHT, ROOM_WALK_TOP, ROOM_WIDTH, keysToTarget } from "@club-kiro/shared";
 import {
   decorTextureKey,
   decorTextures,
@@ -16,6 +16,9 @@ import { face, glowTexture, groundShadow, heldDirection, moveKeys, nameTag, sync
 import { GHOST_HEAD_OFFSET_X, petTextures } from "../art";
 import { moveItem, placeItem, removeItem, type GhostView, type HauntedRoomClient, type RoomItemView } from "../net";
 import { coverCamera, followMe } from "../ghostParts";
+
+/** Decorations that lie on the floor and should always be under ghosts. */
+const FLAT_DECOR = new Set(["dec-rug"]);
 
 const clampToRoom = (x: number, y: number): [number, number] => [
   Phaser.Math.Clamp(x, 0, ROOM_WIDTH),
@@ -138,10 +141,10 @@ export class RoomScene extends Phaser.Scene {
       sprite.facing = face(sprite.body, sprite.hat, ghost.x - c.x, sprite.facing);
       c.x += (ghost.x - c.x) * k;
       c.y += (ghost.y - c.y) * k;
-      c.setDepth(1000 + c.y);
+      c.setDepth(c.y + GHOST_FOOT_OFFSET); // feet line, same as decorations' bottoms
       this.updateHat(sprite, ghost.hat);
       sprite.pet = syncPet(this, sprite.pet, ghost.pet ?? "", c.x, c.y, this.reducedMotion);
-      sprite.pet?.update(dt, c.x, c.y, sprite.facing, 1000 + c.y - 1);
+      sprite.pet?.update(dt, c.x, c.y, sprite.facing, c.y + GHOST_FOOT_OFFSET - 0.5);
     });
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
@@ -187,7 +190,9 @@ export class RoomScene extends Phaser.Scene {
     for (const s of this.itemSprites) s.destroy();
     this.itemSprites.length = 0;
     items.forEach((item, index) => {
-      const img = this.add.image(item.x, item.y, decorTextureKey(item.itemId)).setDepth(item.y);
+      const img = this.add.image(item.x, item.y, decorTextureKey(item.itemId));
+      // Sort by the item's bottom edge so ghosts can float behind tall things; rugs lie flat under everyone.
+      img.setDepth(FLAT_DECOR.has(item.itemId) ? 0 : item.y + img.height / 2);
       img.setData("itemId", item.itemId);
       img.setData("x", item.x);
       img.setData("y", item.y);

@@ -28,10 +28,37 @@ export interface Rect {
   shape?: "rect" | "ellipse";
 }
 
-/** Solid props ghosts cannot walk through. Rects are top-left anchored. */
+/**
+ * Collision is tested at a ghost's feet, not its middle: a small oval this far
+ * below the ghost's position. Props block only their footprint on the ground,
+ * so a ghost can float behind the tall part of a prop (the client draws it behind).
+ */
+export const GHOST_FOOT_OFFSET = 36;
+export const GHOST_FOOT_RX = 18;
+export const GHOST_FOOT_RY = 8;
+
+/** Where the fountain is drawn (centre of the basin art). */
+export const FOUNTAIN_CENTRE = { x: 600, y: 350 } as const;
+/** Lamp posts in the plaza: the art and the glows use these; their bases are solid. */
+export const LAMPS = [
+  { x: 120, y: 200 },
+  { x: 420, y: 160 },
+  { x: 780, y: 160 },
+  { x: 160, y: 560 },
+  { x: 1060, y: 560 },
+] as const;
+
+/** The fountain basin's footprint on the ground (feet space). */
+export const FOUNTAIN_FOOT: Rect = { x: 516, y: 334, width: 168, height: 76, shape: "ellipse" };
+
+/** Solid footprints in the plaza, in feet space. Rects are top-left anchored. */
 export const OBSTACLES: readonly Rect[] = [
-  { x: 520, y: 290, width: 160, height: 120, shape: "ellipse" }, // round fountain basin
-  { x: 940, y: 80, width: 100, height: 200 }, // crooked clock tower
+  FOUNTAIN_FOOT,
+  { x: 946, y: 262, width: 88, height: 26 }, // clock tower base
+  ...LAMPS.map((l) => ({ x: l.x - 8, y: l.y + 82, width: 16, height: 10 })), // lamp-post bases
+  { x: 32, y: 682, width: 18, height: 8 }, // tree trunks (match worldArt tree())
+  { x: 1163, y: 294, width: 15, height: 8 },
+  { x: 1152, y: 692, width: 16, height: 8 },
 ];
 
 /** Highest a ghost's centre may go in the plaza: keeps it on the square, below the houses. */

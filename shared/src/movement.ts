@@ -1,4 +1,7 @@
 import {
+  GHOST_FOOT_OFFSET,
+  GHOST_FOOT_RX,
+  GHOST_FOOT_RY,
   GHOST_RADIUS,
   GHOST_SPEED,
   KEY_TARGET_DISTANCE,
@@ -28,29 +31,33 @@ export const ROOM_AREA: WalkArea = { top: ROOM_WALK_TOP, obstacles: [] };
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
-/** Keep a ghost's centre inside the walkable area, allowing for its radius. */
+/** Lowest a ghost may go: its feet stay a little above the bottom edge. */
+export const WALK_BOTTOM = PLAZA_HEIGHT - GHOST_FOOT_OFFSET - 8;
+
+/** Keep a ghost inside the walkable area, allowing for its size. */
 export function clampToPlaza(p: Point, top: number = PLAZA_WALK_TOP): Point {
   return {
     x: clamp(p.x, GHOST_RADIUS, PLAZA_WIDTH - GHOST_RADIUS),
-    y: clamp(p.y, Math.max(GHOST_RADIUS, top), PLAZA_HEIGHT - GHOST_RADIUS),
+    y: clamp(p.y, Math.max(GHOST_RADIUS, top), WALK_BOTTOM),
   };
 }
 
-/** True if a ghost centred at `p` overlaps the prop. */
+/**
+ * True if the ghost at `p` would stand on the prop's footprint. Tested at the
+ * ghost's feet (a small oval below its position), so it can float behind the
+ * upright part of a prop, which only blocks where it meets the ground.
+ */
 export function hitsRect(p: Point, r: Rect): boolean {
+  const fx = p.x;
+  const fy = p.y + GHOST_FOOT_OFFSET;
   if (r.shape === "ellipse") {
-    // Grow the ellipse by the ghost's radius, then test the centre point.
-    const rx = r.width / 2 + GHOST_RADIUS;
-    const ry = r.height / 2 + GHOST_RADIUS;
-    const dx = (p.x - (r.x + r.width / 2)) / rx;
-    const dy = (p.y - (r.y + r.height / 2)) / ry;
+    // Grow the footprint ellipse by the foot oval, then test the foot point.
+    const dx = (fx - (r.x + r.width / 2)) / (r.width / 2 + GHOST_FOOT_RX);
+    const dy = (fy - (r.y + r.height / 2)) / (r.height / 2 + GHOST_FOOT_RY);
     return dx * dx + dy * dy < 1;
   }
-  const nearestX = clamp(p.x, r.x, r.x + r.width);
-  const nearestY = clamp(p.y, r.y, r.y + r.height);
-  const dx = p.x - nearestX;
-  const dy = p.y - nearestY;
-  return dx * dx + dy * dy < GHOST_RADIUS * GHOST_RADIUS;
+  // Rect grown by the foot oval's half-sizes (a rounded-corner test is not worth it here).
+  return fx > r.x - GHOST_FOOT_RX && fx < r.x + r.width + GHOST_FOOT_RX && fy > r.y - GHOST_FOOT_RY && fy < r.y + r.height + GHOST_FOOT_RY;
 }
 
 export function hitsObstacle(p: Point, obstacles: readonly Rect[] = OBSTACLES): boolean {

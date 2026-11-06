@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import {
   CAST_COOLDOWN_MS,
   GHOST_COLOURS,
-  OBSTACLES,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
   SHOP_ITEMS,
@@ -45,6 +44,7 @@ import {
 } from "./net";
 import {
   AREAS,
+  FOUNTAIN_CENTRE,
   exitAt,
   type AreaId,
   type JoinOptions,
@@ -744,8 +744,6 @@ function wireUi() {
 // A miss drops back to the slowest tier. A hit at top speed lands a catch:
 // only then is a cast sent, and the server rolls the catch from the accuracy.
 
-const FOUNTAIN = OBSTACLES[0]!;
-const FOUNTAIN_CENTRE = { x: FOUNTAIN.x + FOUNTAIN.width / 2, y: FOUNTAIN.y + FOUNTAIN.height / 2 };
 const FISH_RANGE = 160; // how close a ghost must be to cast
 /** Time for the marker to cross the bar once, per tier. The last tier lands the catch. */
 const TIER_SWEEP_MS = [1500, 1050, 760, 540];

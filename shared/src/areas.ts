@@ -26,18 +26,26 @@ export interface AreaDef {
   exits: AreaExit[];
 }
 
+// Footprints on the ground (feet space): only where each prop meets the floor is solid,
+// so ghosts can float behind the lighthouse, pillars and sarcophagus.
 const LIGHTHOUSE_OBSTACLES: readonly Rect[] = [
-  { x: 820, y: 250, width: 170, height: 90, shape: "ellipse" }, // lighthouse base
-  { x: 300, y: 280, width: 110, height: 60, shape: "ellipse" }, // boulder
-  { x: 120, y: 520, width: 90, height: 50, shape: "ellipse" }, // rock
+  { x: 835, y: 276, width: 140, height: 32, shape: "ellipse" }, // lighthouse base
+  { x: 300, y: 304, width: 112, height: 24, shape: "ellipse" }, // boulder
+  { x: 124, y: 548, width: 86, height: 20, shape: "ellipse" }, // rock
 ];
 
+const pillarFoot = (x: number, y: number): Rect => ({ x: x - 30, y: y + 14, width: 60, height: 22 });
+/** Pillar positions in the crypt (the art draws a shaft rising from each). */
+export const CRYPT_PILLARS = [
+  { x: 285, y: 290 },
+  { x: 915, y: 290 },
+  { x: 285, y: 540 },
+  { x: 915, y: 540 },
+] as const;
+
 const CRYPT_OBSTACLES: readonly Rect[] = [
-  { x: 520, y: 360, width: 160, height: 70 }, // sarcophagus
-  { x: 260, y: 290, width: 50, height: 40 }, // pillars
-  { x: 890, y: 290, width: 50, height: 40 },
-  { x: 260, y: 540, width: 50, height: 40 },
-  { x: 890, y: 540, width: 50, height: 40 },
+  { x: 516, y: 384, width: 168, height: 46 }, // sarcophagus
+  ...CRYPT_PILLARS.map((p) => pillarFoot(p.x, p.y)),
 ];
 
 export const AREAS: Record<AreaId, AreaDef> = {
@@ -48,17 +56,17 @@ export const AREAS: Record<AreaId, AreaDef> = {
     walk: { top: PLAZA_WALK_TOP, obstacles: OBSTACLES },
     spawn: { x: 600, y: 560 },
     exits: [
-      { to: "lighthouse", x: 50, y: 470, radius: 70, label: "Lighthouse Cliffs" },
-      { to: "crypt", x: 1150, y: 450, radius: 70, label: "The Old Crypt" },
+      { to: "lighthouse", x: 50, y: 470, radius: 90, label: "Lighthouse Cliffs" },
+      { to: "crypt", x: 1150, y: 450, radius: 90, label: "The Old Crypt" },
     ],
   },
   lighthouse: {
     id: "lighthouse",
     room: "lighthouse",
     name: "Lighthouse Cliffs",
-    walk: { top: 230, obstacles: LIGHTHOUSE_OBSTACLES },
+    walk: { top: 200, obstacles: LIGHTHOUSE_OBSTACLES }, // room to float behind the lighthouse
     spawn: { x: 1050, y: 520 },
-    exits: [{ to: "plaza", x: 1150, y: 520, radius: 70, label: "Town Square" }],
+    exits: [{ to: "plaza", x: 1150, y: 520, radius: 90, label: "Town Square" }],
   },
   crypt: {
     id: "crypt",
@@ -66,7 +74,7 @@ export const AREAS: Record<AreaId, AreaDef> = {
     name: "The Old Crypt",
     walk: { top: 250, obstacles: CRYPT_OBSTACLES },
     spawn: { x: 150, y: 470 },
-    exits: [{ to: "plaza", x: 50, y: 470, radius: 70, label: "Town Square" }],
+    exits: [{ to: "plaza", x: 50, y: 470, radius: 90, label: "Town Square" }],
   },
 };
 
