@@ -33,9 +33,10 @@ await clickPlaza(page, 600, 500);
 await page.waitForTimeout(3000);
 await page.waitForSelector("#fish-prompt:not([hidden])", { timeout: 5000 });
 await page.click("#fish-prompt");
-for (let i = 0; i < 10; i++) {
-  await page.click("#fish-cast");
-  await page.waitForTimeout(850);
+for (let i = 0; i < 40; i++) {
+  await page.waitForSelector('#fish-bar[data-in-zone="1"]', { timeout: 5000 });
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(220);
 }
 await page.click("#fish-stop");
 await page.waitForTimeout(500);

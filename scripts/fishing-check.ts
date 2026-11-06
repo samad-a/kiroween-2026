@@ -48,10 +48,13 @@ await page.screenshot({ path: "screenshots/05-fishing-prompt.png" });
 // Start a round and cast a few times.
 await page.click("#fish-prompt");
 await page.waitForSelector("#fish-round:not([hidden])");
-for (let i = 0; i < 6; i++) {
-  await page.click("#fish-cast");
-  await page.waitForTimeout(900); // respect the server cast cooldown
+// Reel with Space whenever the marker is inside the zone; four hits in a row land a catch.
+for (let i = 0; i < 40; i++) {
+  await page.waitForSelector('#fish-bar[data-in-zone="1"]', { timeout: 5000 });
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(220);
 }
+await page.waitForTimeout(1200);
 const earnedCoins = await coinCount(page).catch(() => 0);
 await page.screenshot({ path: "screenshots/06-fishing-round.png" });
 
