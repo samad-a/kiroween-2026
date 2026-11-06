@@ -1,11 +1,12 @@
 // The shop catalogue, shared so client and server agree on ids and prices.
 // Static: there is nothing to persist about the catalogue itself, only who owns what.
 // Granting ownership is this spec's job; wearing/placing items is haunted-ui's.
+import { PET_ITEMS } from "./pets.js";
 
 export const SHOP = { buy: "shop:buy" } as const;
 export const SHOP_EVENT = { bought: "shop:bought", denied: "shop:denied", wallet: "wallet" } as const;
 
-export type ItemKind = "hat" | "decoration";
+export type ItemKind = "hat" | "decoration" | "pet";
 
 export interface ShopItem {
   id: string;
@@ -28,6 +29,7 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   { id: "dec-cauldron", kind: "decoration", name: "Bubbling Cauldron", price: 40 },
   { id: "dec-portrait", kind: "decoration", name: "Haunted Portrait", price: 55 },
   { id: "dec-tree", kind: "decoration", name: "Twisted Willow", price: 70 },
+  ...PET_ITEMS,
 ] as const;
 
 const BY_ID = new Map(SHOP_ITEMS.map((item) => [item.id, item]));

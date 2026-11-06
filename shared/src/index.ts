@@ -9,3 +9,5 @@ export * from "./shop.js";
 export * from "./rooms.js";
 export * from "./friends.js";
 export * from "./seance.js";
+export * from "./areas.js";
+export * from "./pets.js";

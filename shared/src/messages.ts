@@ -15,6 +15,10 @@ export interface JoinOptions {
   recoveryCode?: string;
   /** A previously-worn hat's shop item id, restored on join if still owned. */
   hat?: string;
+  /** The pet you had with you, restored on join if still owned. */
+  pet?: string;
+  /** The public area you're walking in from, so you arrive at the matching exit. */
+  from?: string;
 }
 
 /** Client to server: "walk toward this point". Never an authoritative position. */

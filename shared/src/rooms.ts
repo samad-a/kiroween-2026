@@ -11,6 +11,7 @@ export const ROOM = {
   move: "room:move",
   remove: "room:remove",
   setHat: "set-hat",
+  setPet: "set-pet",
 } as const;
 
 /** A room shares the plaza's coordinate space for simplicity. */
