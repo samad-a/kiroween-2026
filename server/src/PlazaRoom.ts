@@ -29,6 +29,10 @@ import {
   parseMove,
   randomName,
   stepGhost,
+  AREAS,
+  arrivalPoint,
+  isAreaId,
+  type AreaId,
   FRIENDS,
   FRIENDS_EVENT,
   parseFriendTarget,
@@ -66,6 +70,7 @@ import { addCoins, buyItem, displayRecoveryCode, getPlayer, ownedItems, ownsItem
 import { rollCatch } from "./fishing.js";
 import { addFriend, listFriends, removeFriend, setPlayerName } from "./db/friends.js";
 import { isOnline, markOffline, markOnline } from "./presence.js";
+import { canUse, restoreWearables } from "./wearables.js";
 import type { DB } from "./db/index.js";
 
 export const TICK_MS = 50;
@@ -129,6 +134,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [FISH.end]: (client: Client) => this.handleFishEnd(client),
     [SHOP.buy]: (client: Client, payload: unknown) => this.handleBuy(client, payload),
     [ROOM.setHat]: (client: Client, payload: unknown) => this.handleSetHat(client, payload),
+    [ROOM.setPet]: (client: Client, payload: unknown) => this.handleSetPet(client, payload),
     [FRIENDS.add]: (client: Client, payload: unknown) => {
       const me = this.playerIds.get(client.sessionId);
       const target = parseFriendTarget(payload);
@@ -157,7 +163,11 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     client.send(FRIENDS_EVENT.list, list);
   }
 
-  onCreate() {
+  /** Which public area this room is: the plaza, or a place you walk to from it. */
+  area: AreaId = "plaza";
+
+  onCreate(options?: { area?: unknown }) {
+    if (isAreaId(options?.area)) this.area = options.area;
     this.state.haunting = false; // explicit default so clients read a boolean from the start
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), TICK_MS);
     void this.refreshHealth();
@@ -174,7 +184,9 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
   }
 
   onJoin(client: Client, options?: JoinOptions) {
-    const spawn = spawnPoint();
+    // Arriving through an exit puts you by the way back; a fresh join uses the normal spawn.
+    const from = isAreaId(options?.from) ? options.from : undefined;
+    const spawn = this.area === "plaza" && !from ? spawnPoint() : arrivalPoint(this.area, from);
     const ghost = new Ghost();
     ghost.name = cleanName(options?.name) ?? randomName();
     ghost.colour = parseColour(options?.colour) ?? Math.floor(Math.random() * GHOST_COLOURS.length);
@@ -193,10 +205,8 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     ghost.ownerId = String(player.id);
     setPlayerName(this.db, player.id, ghost.name); // shown to people who add them as a friend
     markOnline(player.id);
-    // Restore a previously-worn hat the player still owns.
-    if (options?.hat && ownsItem(this.db, player.id, options.hat) && getShopItem(options.hat)?.kind === "hat") {
-      ghost.hat = options.hat;
-    }
+    // Restore the hat and pet the player had, if they still own them.
+    restoreWearables(this.db, player.id, ghost, options);
     this.sendWallet(client);
   }
 
@@ -281,7 +291,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
 
   private handleSeanceStart(client: Client) {
     const ghost = this.state.ghosts.get(client.sessionId);
-    if (!ghost || this.seances.has(client.sessionId)) return;
+    if (!ghost || this.seances.has(client.sessionId) || this.area !== "plaza") return;
     // You have to be at the candle circle, as with fishing at the fountain.
     if (Math.hypot(ghost.x - SEANCE_SPOT.x, ghost.y - SEANCE_SPOT.y) > SEANCE_RANGE + 40) return;
     this.showSeance(client, extendSequence([], this.random));
@@ -322,7 +332,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
 
   private handleFishStart(client: Client) {
     const playerId = this.playerIds.get(client.sessionId);
-    if (playerId === undefined) return;
+    if (playerId === undefined || this.area !== "plaza") return; // the fountain is in the plaza
     // Starting again replaces any stale round; a fresh round earns from zero.
     this.rounds.set(client.sessionId, { endsAt: Date.now() + ROUND_MS, lastCastAt: 0, earned: 0 });
     const started: FishStarted = { roundMs: ROUND_MS, catches: CATCHES };
@@ -385,13 +395,16 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     const ghost = this.state.ghosts.get(client.sessionId);
     if (playerId === undefined || !ghost) return;
     const hat = (payload as { hat?: unknown } | null)?.hat;
-    if (hat === "") {
-      ghost.hat = "";
-      return;
-    }
-    if (typeof hat === "string" && getShopItem(hat)?.kind === "hat" && ownsItem(this.db, playerId, hat)) {
-      ghost.hat = hat;
-    }
+    if (canUse(this.db, playerId, "hat", hat)) ghost.hat = hat;
+  }
+
+  /** Bring an owned pet along (or "" for none). Ignores unowned or non-pet ids. */
+  private handleSetPet(client: Client, payload: unknown) {
+    const playerId = this.playerIds.get(client.sessionId);
+    const ghost = this.state.ghosts.get(client.sessionId);
+    if (playerId === undefined || !ghost) return;
+    const pet = (payload as { pet?: unknown } | null)?.pet;
+    if (canUse(this.db, playerId, "pet", pet)) ghost.pet = pet;
   }
 
   /** Advance moving ghosts and expire old chat bubbles. Public so tests can drive it. */
@@ -400,7 +413,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     for (const [id, target] of this.targets) {
       const ghost = this.state.ghosts.get(id);
       if (!ghost) continue;
-      const next = stepGhost({ x: ghost.x, y: ghost.y }, target, dtSeconds);
+      const next = stepGhost({ x: ghost.x, y: ghost.y }, target, dtSeconds, AREAS[this.area].walk);
       if (next.x === ghost.x && next.y === ghost.y) {
         this.targets.delete(id);
         continue;

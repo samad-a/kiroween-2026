@@ -15,6 +15,8 @@ export const Ghost = schema(
     bubbleUntil: t.float64(),
     /** Worn hat's shop item id, or empty for none. */
     hat: t.string(),
+    /** The pet following this ghost (shop item id, e.g. "pet-bat-plum"), or empty. */
+    pet: t.string(),
     /** This ghost's owner player id (as a string), so others can visit their room. */
     ownerId: t.string(),
   },

@@ -28,6 +28,7 @@ import { getDb } from "./db/shared.js";
 import { getPlayer, ownsItem, resolvePlayer } from "./db/players.js";
 import { getLayout, saveLayout } from "./db/rooms.js";
 import { playerName } from "./db/friends.js";
+import { restoreWearables } from "./wearables.js";
 import { markOffline, markOnline } from "./presence.js";
 import type { DB } from "./db/index.js";
 
@@ -88,9 +89,7 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     ghost.x = ROOM_WIDTH / 2;
     ghost.y = ROOM_HEIGHT - 120;
     ghost.ownerId = String(player.id);
-    if (options?.hat && ownsItem(this.db, player.id, options.hat) && getShopItem(options.hat)?.kind === "hat") {
-      ghost.hat = options.hat;
-    }
+    restoreWearables(this.db, player.id, ghost, options);
     this.state.ghosts.set(client.sessionId, ghost);
     markOnline(player.id); // still "online" to friends while visiting a room
   }
