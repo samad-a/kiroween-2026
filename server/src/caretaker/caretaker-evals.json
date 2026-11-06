@@ -24,6 +24,13 @@
     { "text": "go back to your own country, we don't want your kind", "label": "block", "why": "hate" },
     { "text": "send me a pic of yourself, no clothes", "label": "block", "why": "sexual, targeting a minor" },
     { "text": "what's everyone's favourite spooky movie?", "label": "allow" },
-    { "text": "haha you got me, that jumpscare was great", "label": "allow" }
+    { "text": "haha you got me, that jumpscare was great", "label": "allow" },
+    { "text": "this fishing game is so damn hard", "label": "allow", "why": "mild swearing at the game, not a person" },
+    { "text": "I'm literally dead 💀 that was hilarious", "label": "allow", "why": "slang and spooky humour, a filter would flag 'dead'" },
+    { "text": "bet I can catch more fish than you, loser buys the hats 😂", "label": "allow", "why": "playful competitive trash talk" },
+    { "text": "I'm going to haunt you forever for stealing my fishing spot lol", "label": "allow", "why": "spooky in-world joke, not a threat" },
+    { "text": "omg my ghost looks like a sad marshmallow", "label": "allow", "why": "self-deprecating joke" },
+    { "text": "you're such a nerd haha, love it", "label": "allow", "why": "affectionate teasing" },
+    { "text": "honestly you're the most annoying person here, everyone thinks so", "label": "nudge", "why": "meanness dressed as honesty, no bad words" }
   ]
 }
