@@ -78,7 +78,26 @@ Legend: 🧪 = I couldn't test this at all · 👀 = I tested it works, but you 
 - [ ] Save `client/public/favicon.svg` in Kiro and check the hook ran (Agent Hooks panel / hook output).
 - [ ] `npm run svg-check` prints svgo results and 16 contrast pairs, all passing.
 
-## 13. Decisions only you can make
+## 13. Walking behind props
+- [ ] 👀 Float up behind the fountain, clock tower, lamp posts and trees: the prop covers the ghost; in front, the ghost covers the prop.
+- [ ] 👀 Lighthouse Cliffs: you can float behind the lighthouse (between it and the fence) and the boulder.
+- [ ] 👀 Crypt: you can float behind the four pillars and the sarcophagus; only their bases block you.
+- [ ] 👀 In your room, you can float behind tall decorations (tree, cauldron, lantern); the rug always stays under you.
+- [ ] Known limit: a ghost's name tag and speech bubble go behind a prop with it. Say if that bothers you.
+
+## 14. Graveyard Dash (Dash Gate, lower left of the plaza)
+- [ ] Standing at the gate shows the Graveyard Dash panel; walking off hides it (and leaves the queue).
+- [ ] **Race alone** starts a run at once. 🧪 With two browsers: **Join the race** in both → "Starts in 8s" → you're taken to the same track together. Four in the queue start immediately.
+- [ ] The track is picked at random from three (Graveyard Lane, Misty Marsh, Crypt Run); the HUD shows its name and your best there.
+- [ ] 3-2-1-GO! countdown; nobody moves before GO.
+- [ ] 👀 **Fun check:** speed feels quick (about 1.7x the plaza); boost pads (chevrons) and wisps give a short burst with a mint trail; mud slows you; tombstones make you slide rather than stop dead; gates open and close on a rhythm (green/red lamp); bats stun and knock you back.
+- [ ] Hold WASD to steer; releasing stops you. Clicking ahead also works.
+- [ ] 🧪 Crossing the finish shows the results card: places, times, coins (solo 5; group 20/12/8/5), "New personal best!" (+5) and your best time. **Back to town** returns you to the square.
+- [ ] 🧪 Your best times show on the gate panel next time ("Your bests: …"), per track.
+- [ ] Leaving mid-race (closing the tab) gives no coins and no record.
+- [ ] 👀 Tune if needed: race length, speed, how often bats appear. These are numbers at the top of `shared/src/dash.ts`.
+
+## 15. Decisions only you can make
 - [ ] `product.md` still says "parchment and tombstone panels"; the UI now uses dark Kiro-purple panels. Update the steering file, or ask me to bring parchment back.
 - [ ] Kiro name and mascot-like ghost: still unconfirmed with the organisers (backup name Club Boo).
 - [ ] Two identical commits, `d50b04c` and `0423dda` ("client: modern UI pass…"). If they're not pushed, I can squash them. If they are, leave them.
