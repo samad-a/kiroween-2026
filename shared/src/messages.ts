@@ -23,7 +23,8 @@ export interface MoveMessage {
   y: number;
 }
 
-export const MESSAGE = { move: "move" } as const;
+/** move: walk toward a point. stop: halt where the server has you now (no payload). */
+export const MESSAGE = { move: "move", stop: "stop" } as const;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 

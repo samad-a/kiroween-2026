@@ -24,10 +24,17 @@ export interface Rect {
   y: number;
   width: number;
   height: number;
+  /** "ellipse": the solid part is the ellipse inscribed in the rect. Default is the rect. */
+  shape?: "rect" | "ellipse";
 }
 
 /** Solid props ghosts cannot walk through. Rects are top-left anchored. */
 export const OBSTACLES: readonly Rect[] = [
-  { x: 520, y: 290, width: 160, height: 120 }, // fountain
+  { x: 520, y: 290, width: 160, height: 120, shape: "ellipse" }, // round fountain basin
   { x: 940, y: 80, width: 100, height: 200 }, // crooked clock tower
 ];
+
+/** Highest a ghost's centre may go in the plaza: keeps it on the square, below the houses. */
+export const PLAZA_WALK_TOP = 165;
+/** Highest a ghost's centre may go in a room: keeps it on the floor, off the wall. */
+export const ROOM_WALK_TOP = 290;

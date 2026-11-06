@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { GHOST_RADIUS, GHOST_SPEED, PLAZA_HEIGHT, PLAZA_WIDTH } from "./constants.js";
+import { GHOST_RADIUS, GHOST_SPEED, PLAZA_HEIGHT, PLAZA_WALK_TOP, PLAZA_WIDTH } from "./constants.js";
 import { clampToPlaza, hitsObstacle, keysToTarget, stepGhost, type Point } from "./movement.js";
 
 const anyPoint = fc.record({
@@ -10,15 +10,16 @@ const anyPoint = fc.record({
 
 /** A legal ghost position: inside the plaza and not inside a prop. */
 const validPoint = anyPoint
-  .map(clampToPlaza)
+  .map((p) => clampToPlaza(p))
   .filter((p) => !hitsObstacle(p));
 
 const dt = fc.double({ min: 0, max: 0.5, noNaN: true });
 
+/** Inside the walkable square: never up among the houses. */
 const inPlaza = (p: Point): boolean =>
   p.x >= GHOST_RADIUS &&
   p.x <= PLAZA_WIDTH - GHOST_RADIUS &&
-  p.y >= GHOST_RADIUS &&
+  p.y >= PLAZA_WALK_TOP &&
   p.y <= PLAZA_HEIGHT - GHOST_RADIUS;
 
 describe("movement", () => {
@@ -49,8 +50,8 @@ describe("movement", () => {
   });
 
   it("does not overshoot a reachable target", () => {
-    const next = stepGhost({ x: 100, y: 100 }, { x: 110, y: 100 }, 10);
-    expect(next).toEqual({ x: 110, y: 100 });
+    const next = stepGhost({ x: 100, y: 500 }, { x: 110, y: 500 }, 10);
+    expect(next).toEqual({ x: 110, y: 500 });
   });
 
   it("refuses a step into the fountain", () => {
