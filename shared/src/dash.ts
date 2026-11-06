@@ -254,9 +254,9 @@ export function stepRacer(t: Track, s: RacerState, intent: RacerIntent, dt: numb
     if (!intent.dx && !intent.dy && intent.target) step = Math.min(step, Math.hypot(intent.target.x - s.x, intent.target.y - s.y));
     const nx = s.x + (dx / len) * step;
     const ny = s.y + (dy / len) * step;
-    if (!blocked(t, { x: nx, y: ny }, ms)) [s.x, s.y] = [nx, ny];
-    else if (!blocked(t, { x: nx, y: s.y }, ms)) s.x = nx;
-    else if (!blocked(t, { x: s.x, y: ny }, ms)) s.y = ny;
+    if (!blocked({ x: nx, y: ny }, ms)) [s.x, s.y] = [nx, ny];
+    else if (!blocked({ x: nx, y: s.y }, ms)) s.x = nx;
+    else if (!blocked({ x: s.x, y: ny }, ms)) s.y = ny;
   }
 
   if (ms >= 0 && t.pads.some((p) => inside(s, p))) {
@@ -277,7 +277,7 @@ export function stepRacer(t: Track, s: RacerState, intent: RacerIntent, dt: numb
       if (Math.hypot(s.x - p.x, s.y - p.y) < BAT_RADIUS) {
         s.stunUntil = ms + STUN_MS;
         const back = { x: s.x - KNOCKBACK, y: s.y };
-        if (!blocked(t, back, ms)) s.x = back.x;
+        if (!blocked(back, ms)) s.x = back.x;
         events.stunned = true;
         break;
       }
@@ -295,7 +295,7 @@ export function startPosition(i: number, n: number): Point {
 /** Coins for a finish: by place in a group race, flat for solo, plus a record bonus. */
 export function dashPayout(place: number | null, racers: number, newRecord: boolean): number {
   if (place === null) return 0;
-  const base = racers <= 1 ? SOLO_COINS : (PLACE_COINS[place - 1] ?? PLACE_COINS[PLACE_COINS.length - 1]);
+  const base: number = racers <= 1 ? SOLO_COINS : (PLACE_COINS[place - 1] ?? PLACE_COINS[3]);
   return base + (newRecord ? RECORD_BONUS : 0);
 }
 

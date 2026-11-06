@@ -1,4 +1,4 @@
-import { Room, type Client } from "colyseus";
+import { Room, matchMaker, type Client } from "colyseus";
 import {
   BUBBLE_TTL_MS,
   CAST_COOLDOWN_MS,
@@ -30,6 +30,15 @@ import {
   randomName,
   stepGhost,
   AREAS,
+  DASH,
+  DASH_EVENT,
+  DASH_GATE,
+  DASH_MAP_IDS,
+  DASH_MAX_RACERS,
+  DASH_QUEUE_MS,
+  DASH_ROOM,
+  type DashQueue,
+  type DashStart,
   arrivalPoint,
   isAreaId,
   type AreaId,
@@ -71,6 +80,7 @@ import { rollCatch } from "./fishing.js";
 import { addFriend, listFriends, removeFriend, setPlayerName } from "./db/friends.js";
 import { isOnline, markOffline, markOnline } from "./presence.js";
 import { canUse, restoreWearables } from "./wearables.js";
+import { getRecords } from "./db/dash.js";
 import type { DB } from "./db/index.js";
 
 export const TICK_MS = 50;
@@ -151,7 +161,82 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [SEANCE.start]: (client: Client) => this.handleSeanceStart(client),
     [SEANCE.answer]: (client: Client, payload: unknown) => this.handleSeanceAnswer(client, payload),
     [SEANCE.end]: (client: Client) => this.endSeance(client, "left"),
+    [DASH.join]: (client: Client) => this.joinDashQueue(client),
+    [DASH.leave]: (client: Client) => this.leaveDashQueue(client.sessionId),
+    [DASH.solo]: (client: Client) => {
+      if (!this.atDashGate(client.sessionId)) return;
+      this.leaveDashQueue(client.sessionId);
+      void this.startDash([client.sessionId]);
+    },
   };
+
+  // --- Graveyard Dash queue (the gate is in the plaza; the race is its own room) ---
+
+  private dashQueue: string[] = [];
+  private dashStartsAt = 0;
+  private dashTimer?: { clear(): void };
+
+  private atDashGate(sessionId: string): boolean {
+    const g = this.state.ghosts.get(sessionId);
+    return this.area === "plaza" && !!g && Math.hypot(g.x - DASH_GATE.x, g.y - DASH_GATE.y) <= DASH_GATE.radius + 30;
+  }
+
+  private joinDashQueue(client: Client) {
+    if (!this.atDashGate(client.sessionId) || this.dashQueue.includes(client.sessionId)) return;
+    this.dashQueue.push(client.sessionId);
+    if (this.dashQueue.length >= DASH_MAX_RACERS) {
+      void this.startDash(this.dashQueue.splice(0, DASH_MAX_RACERS));
+    } else if (this.dashQueue.length >= 2 && !this.dashStartsAt) {
+      this.dashStartsAt = Date.now() + DASH_QUEUE_MS;
+      this.dashTimer = this.clock.setTimeout(() => void this.startDash(this.dashQueue.splice(0, DASH_MAX_RACERS)), DASH_QUEUE_MS);
+    }
+    this.sendDashQueue();
+  }
+
+  private leaveDashQueue(sessionId: string) {
+    const i = this.dashQueue.indexOf(sessionId);
+    if (i < 0) return;
+    this.dashQueue.splice(i, 1);
+    this.clients.find((c) => c.sessionId === sessionId)?.send(DASH_EVENT.queue, { names: [], startsAt: 0, records: {} } satisfies DashQueue);
+    if (this.dashQueue.length < 2) this.cancelDashCountdown();
+    this.sendDashQueue();
+  }
+
+  private cancelDashCountdown() {
+    this.dashTimer?.clear();
+    this.dashTimer = undefined;
+    this.dashStartsAt = 0;
+  }
+
+  /** Tell everyone in the queue who's in and when it starts, with their own records. */
+  private sendDashQueue() {
+    const names = this.dashQueue.map((id) => this.state.ghosts.get(id)?.name ?? "A ghost");
+    for (const id of this.dashQueue) {
+      const playerId = this.playerIds.get(id);
+      const records = playerId !== undefined ? getRecords(this.db, playerId) : {};
+      this.clients.find((c) => c.sessionId === id)?.send(DASH_EVENT.queue, { names, startsAt: this.dashStartsAt, records } satisfies DashQueue);
+    }
+  }
+
+  /** Open a race room for these players on a random track, and send them there. */
+  private async startDash(sessionIds: string[]) {
+    this.cancelDashCountdown();
+    if (this.dashQueue.length >= 2) {
+      // Others still waiting: give them their own countdown.
+      this.dashStartsAt = Date.now() + DASH_QUEUE_MS;
+      this.dashTimer = this.clock.setTimeout(() => void this.startDash(this.dashQueue.splice(0, DASH_MAX_RACERS)), DASH_QUEUE_MS);
+    }
+    this.sendDashQueue();
+    const racers = sessionIds.filter((id) => this.playerIds.has(id));
+    if (racers.length === 0) return;
+    const map = DASH_MAP_IDS[Math.floor(this.random() * DASH_MAP_IDS.length)]!;
+    try {
+      const room = await matchMaker.createRoom(DASH_ROOM, { map, playerIds: racers.map((id) => this.playerIds.get(id)) });
+      for (const id of racers) this.clients.find((c) => c.sessionId === id)?.send(DASH_EVENT.start, { roomId: room.roomId, map } satisfies DashStart);
+    } catch (err) {
+      console.error("could not open a dash race", err);
+    }
+  }
 
   /** Send the player their friends list, with who's online right now. */
   private sendFriends(client: Client) {
@@ -219,6 +304,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     this.playerIds.delete(client.sessionId);
     this.rounds.delete(client.sessionId);
     this.seances.delete(client.sessionId); // leaving forfeits an unfinished séance
+    this.leaveDashQueue(client.sessionId);
   }
 
   /** Send the player their coins, owned items and recovery code. */
@@ -410,6 +496,8 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
   /** Advance moving ghosts and expire old chat bubbles. Public so tests can drive it. */
   tick(dtSeconds: number) {
     const now = Date.now();
+    // Walking away from the Dash Gate leaves the queue.
+    for (const id of [...this.dashQueue]) if (!this.atDashGate(id)) this.leaveDashQueue(id);
     for (const [id, target] of this.targets) {
       const ghost = this.state.ghosts.get(id);
       if (!ghost) continue;

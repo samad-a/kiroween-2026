@@ -55,6 +55,18 @@ const MIGRATIONS: ((db: DB) => void)[] = [
       );
     `);
   },
+  // v4: Graveyard Dash personal bests, one per player per track.
+  (db) => {
+    db.exec(`
+      CREATE TABLE dash_records (
+        player_id  INTEGER NOT NULL REFERENCES players(id),
+        map        TEXT NOT NULL,
+        best_ms    INTEGER NOT NULL CHECK (best_ms > 0),
+        set_at     INTEGER NOT NULL,
+        PRIMARY KEY (player_id, map)
+      );
+    `);
+  },
 ];
 
 /** Run any migrations the database has not seen yet, tracked by user_version. */

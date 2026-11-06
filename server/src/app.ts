@@ -1,7 +1,8 @@
 import { defineRoom, defineServer } from "colyseus";
-import { AREAS, HAUNTED_ROOM, PLAZA_ROOM } from "@club-kiro/shared";
+import { AREAS, DASH_ROOM, HAUNTED_ROOM, PLAZA_ROOM } from "@club-kiro/shared";
 import { PlazaRoom } from "./PlazaRoom.js";
 import { HauntedRoom } from "./HauntedRoom.js";
+import { DashRoom } from "./DashRoom.js";
 
 export function createServer() {
   return defineServer({
@@ -11,6 +12,7 @@ export function createServer() {
       [AREAS.lighthouse.room]: defineRoom(PlazaRoom, { area: "lighthouse" }),
       [AREAS.crypt.room]: defineRoom(PlazaRoom, { area: "crypt" }),
       [HAUNTED_ROOM]: defineRoom(HauntedRoom),
+      [DASH_ROOM]: defineRoom(DashRoom),
     },
   });
 }
