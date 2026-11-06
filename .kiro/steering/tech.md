@@ -29,4 +29,5 @@ Monorepo:
 - Dev: `npm run dev:server` (ws://localhost:2567) and `npm run dev:client` (http://localhost:5173), in separate terminals.
 - Browser check: with both dev servers running, `node node_modules/tsx/dist/cli.mjs scripts/two-tabs.ts` (screenshots to `screenshots/`). `scripts/smoke.ts` does the same over the network only.
 - Colyseus is 0.18: client package is `@colyseus/sdk`, state uses the `schema({...})` + `t.*` builder (no decorators). Sync positions as `t.float64()`; `t.number()` is float32.
+- If the agent terminal drops output, run checks with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1 [-build]` (writes `check.log`) and commits with `scripts\commit.ps1 "message" paths...` (writes `commit.log`), both as background processes, then read the log.
 - Secret scan: `node scripts/secret-scan.mjs` checks staged files. Runs from a Kiro hook and the git pre-commit hook.
