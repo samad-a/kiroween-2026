@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "SVG optimise + contrast check",
+      "trigger": "PostFileSave",
+      "description": "When an SVG, the art modules or the stylesheet are saved: optimise saved .svg files with svgo, then check every text colour pair against WCAG AA.",
+      "matcher": "(\\.svg$|client[\\\\/]src[\\\\/](art|worldArt|ghostParts)\\.ts$|client[\\\\/]src[\\\\/]style\\.css$)",
+      "action": {
+        "type": "command",
+        "command": "node scripts/svg-check.mjs",
+        "timeout": 60
+      }
+    }
+  ]
+}
