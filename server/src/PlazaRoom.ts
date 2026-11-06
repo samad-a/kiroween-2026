@@ -52,6 +52,43 @@ import {
   SEANCE_RANGE,
   SEANCE_SPOT,
   PET_STORE,
+  SEANCE_AREA,
+  FISH_SPOT,
+  MESSAGE_COOLDOWN_MS,
+  TOWN,
+  TOWN_EVENT,
+  EMOTES,
+  EMOTE_COOLDOWN_MS,
+  QUICK_CHAT,
+  WISH_SPOT,
+  WISH_COST,
+  WISH_SPARKLE_MS,
+  LAMP_SPOT,
+  LAMP_MAX,
+  LAMP_TEND,
+  LAMP_DECAY_PER_S,
+  LAMP_TEND_COOLDOWN_MS,
+  LAMP_REWARD,
+  LAMP_HELPER_WINDOW_MS,
+  LAMP_AFTER_BLAZE,
+  RIDDLE_SPOT,
+  RIDDLES,
+  RIDDLE_COINS,
+  RIDDLE_COOLDOWN_MS,
+  DAILY_GIFT_COINS,
+  atSpot,
+  dayKey,
+  parseIndex,
+  priceOf,
+  type StampId,
+  type CoinsChanged,
+  type DailyGift,
+  type EmoteBroadcast,
+  type PartyList,
+  type RiddleAsk,
+  type RiddleResult,
+  type StampEarned,
+  type StampList,
   extendSequence,
   parseSeanceAnswer,
   seanceDeadlineMs,
@@ -82,6 +119,8 @@ import { addFriend, listFriends, removeFriend, setPlayerName } from "./db/friend
 import { isOnline, markOffline, markOnline } from "./presence.js";
 import { canUse, restoreWearables } from "./wearables.js";
 import { getRecords } from "./db/dash.js";
+import { awardStamp, claimDailyGift, listStamps } from "./db/town.js";
+import { listParties } from "./parties.js";
 import type { DB } from "./db/index.js";
 
 export const TICK_MS = 50;
@@ -149,7 +188,10 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [FRIENDS.add]: (client: Client, payload: unknown) => {
       const me = this.playerIds.get(client.sessionId);
       const target = parseFriendTarget(payload);
-      if (me !== undefined && target) addFriend(this.db, me, target.playerId);
+      if (me !== undefined && target) {
+        addFriend(this.db, me, target.playerId);
+        this.grant(client, "friend");
+      }
       this.sendFriends(client);
     },
     [FRIENDS.remove]: (client: Client, payload: unknown) => {
@@ -169,7 +211,142 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
       this.leaveDashQueue(client.sessionId);
       void this.startDash([client.sessionId]);
     },
+    [TOWN.emote]: (client: Client, payload: unknown) => this.handleEmote(client, payload),
+    [TOWN.quick]: (client: Client, payload: unknown) => this.handleQuickChat(client, payload),
+    [TOWN.wish]: (client: Client) => this.handleWish(client),
+    [TOWN.tend]: (client: Client) => this.handleTend(client),
+    [TOWN.riddle]: (client: Client) => this.handleRiddle(client),
+    [TOWN.riddleAnswer]: (client: Client, payload: unknown) => this.handleRiddleAnswer(client, payload),
+    [TOWN.stamps]: (client: Client) => this.sendStamps(client),
+    [TOWN.parties]: (client: Client) => client.send(TOWN_EVENT.parties, { parties: listParties() } satisfies PartyList),
   };
+
+  // --- Town life: stamps, emotes, quick chat, wishing well, lamp, riddles ---
+
+  /** Stamps each connected player has, cached so frequent triggers don't hit the DB. */
+  private readonly stamps = new Map<string, Set<string>>();
+  private readonly lastEmoteAt = new Map<string, number>();
+  private readonly sparkleUntil = new Map<string, number>();
+  private readonly lampTendedAt = new Map<string, number>();
+  private readonly riddles = new Map<string, number>(); // sessionId -> riddle index being asked
+  private readonly lastRiddleAt = new Map<string, number>();
+
+  /** Award a stamp once, and tell the player. */
+  private grant(client: Client, id: StampId) {
+    const have = this.stamps.get(client.sessionId);
+    const playerId = this.playerIds.get(client.sessionId);
+    if (!have || have.has(id) || playerId === undefined) return;
+    have.add(id);
+    if (awardStamp(this.db, playerId, id)) client.send(TOWN_EVENT.stamp, { id } satisfies StampEarned);
+  }
+
+  private sendStamps(client: Client) {
+    const playerId = this.playerIds.get(client.sessionId);
+    if (playerId === undefined) return;
+    const stamps = listStamps(this.db, playerId);
+    this.stamps.set(client.sessionId, new Set(stamps));
+    client.send(TOWN_EVENT.stamps, { stamps } satisfies StampList);
+  }
+
+  private ghostAt(client: Client, spot: Parameters<typeof atSpot>[0]): boolean {
+    const g = this.state.ghosts.get(client.sessionId);
+    return !!g && atSpot(spot, this.area, g, 40); // a little slack for lag
+  }
+
+  private sendCoins(client: Client, balance: number) {
+    client.send(TOWN_EVENT.coins, { balance } satisfies CoinsChanged);
+  }
+
+  private handleEmote(client: Client, payload: unknown) {
+    const emote = parseIndex(payload, "emote", EMOTES.length);
+    if (emote === null || !this.state.ghosts.has(client.sessionId)) return;
+    const now = Date.now();
+    if (now - (this.lastEmoteAt.get(client.sessionId) ?? 0) < EMOTE_COOLDOWN_MS) return;
+    this.lastEmoteAt.set(client.sessionId, now);
+    this.broadcast(TOWN_EVENT.emote, { sessionId: client.sessionId, emote } satisfies EmoteBroadcast);
+    this.grant(client, "emote");
+  }
+
+  /** A pre-approved line: no LLM check needed, but the same mute and rate limit as chat. */
+  private handleQuickChat(client: Client, payload: unknown) {
+    const index = parseIndex(payload, "index", QUICK_CHAT.length);
+    const ghost = this.state.ghosts.get(client.sessionId);
+    const info = this.chat.get(client.sessionId);
+    if (index === null || !ghost || !info) return;
+    const now = Date.now();
+    if (now < info.mutedUntil || now - info.lastMessageAt < MESSAGE_COOLDOWN_MS) return;
+    const text = QUICK_CHAT[index]!;
+    info.lastMessageAt = now;
+    ghost.bubble = text;
+    ghost.bubbleUntil = now + BUBBLE_TTL_MS;
+    this.broadcast(CHAT_ROOM_MESSAGE.chat, { sessionId: client.sessionId, name: ghost.name, text } satisfies ChatBroadcast);
+  }
+
+  /** Toss a coin in the fountain: a minute of sparkle that everyone sees. */
+  private handleWish(client: Client) {
+    const playerId = this.playerIds.get(client.sessionId);
+    const ghost = this.state.ghosts.get(client.sessionId);
+    if (playerId === undefined || !ghost || ghost.sparkle || !this.ghostAt(client, WISH_SPOT)) return;
+    const balance = addCoins(this.db, playerId, -WISH_COST);
+    if (balance === null) {
+      client.send(SHOP_EVENT.denied, { itemId: "wish", reason: "cost" } satisfies ShopDenied);
+      return;
+    }
+    ghost.sparkle = true;
+    this.sparkleUntil.set(client.sessionId, Date.now() + WISH_SPARKLE_MS);
+    this.sendCoins(client, balance);
+    this.grant(client, "wish");
+  }
+
+  /** Add oil to the lighthouse lamp. When it blazes, everyone who helped lately is paid. */
+  private handleTend(client: Client) {
+    if (!this.ghostAt(client, LAMP_SPOT)) return;
+    const now = Date.now();
+    if (now - (this.lampTendedAt.get(client.sessionId) ?? 0) < LAMP_TEND_COOLDOWN_MS) return;
+    this.lampTendedAt.set(client.sessionId, now);
+    this.state.lamp = Math.min(LAMP_MAX, this.state.lamp + LAMP_TEND);
+    if (this.state.lamp < LAMP_MAX) return;
+
+    this.state.lamp = LAMP_AFTER_BLAZE;
+    const helpers = [...this.lampTendedAt].filter(([, at]) => now - at <= LAMP_HELPER_WINDOW_MS).map(([id]) => id);
+    this.lampTendedAt.clear();
+    for (const id of helpers) {
+      const helper = this.clients.find((c) => c.sessionId === id);
+      const playerId = this.playerIds.get(id);
+      if (!helper || playerId === undefined) continue;
+      const balance = addCoins(this.db, playerId, LAMP_REWARD);
+      if (balance !== null) this.sendCoins(helper, balance);
+      this.note(helper, { kind: "nudge", text: `The beam blazes across the sea! Thank you for keeping it lit. (+${LAMP_REWARD} coins)` });
+      this.grant(helper, "lamp-keeper");
+    }
+  }
+
+  private handleRiddle(client: Client) {
+    if (!this.playerIds.has(client.sessionId) || !this.ghostAt(client, RIDDLE_SPOT)) return;
+    const now = Date.now();
+    if (now - (this.lastRiddleAt.get(client.sessionId) ?? 0) < RIDDLE_COOLDOWN_MS) return;
+    this.lastRiddleAt.set(client.sessionId, now);
+    // Don't repeat the riddle just asked.
+    const last = this.riddles.get(client.sessionId);
+    let index = Math.floor(this.random() * RIDDLES.length);
+    if (index === last) index = (index + 1) % RIDDLES.length;
+    this.riddles.set(client.sessionId, index);
+    const r = RIDDLES[index]!;
+    client.send(TOWN_EVENT.riddle, { q: r.q, options: r.options } satisfies RiddleAsk);
+  }
+
+  private handleRiddleAnswer(client: Client, payload: unknown) {
+    const index = this.riddles.get(client.sessionId);
+    const playerId = this.playerIds.get(client.sessionId);
+    const choice = parseIndex(payload, "choice", 3);
+    if (index === undefined || playerId === undefined || choice === null) return;
+    this.riddles.delete(client.sessionId); // one answer per riddle
+    const r = RIDDLES[index]!;
+    const correct = choice === r.answer;
+    const balance = (correct ? addCoins(this.db, playerId, RIDDLE_COINS) : null) ?? getPlayer(this.db, playerId)?.coins ?? 0;
+    client.send(TOWN_EVENT.riddleResult, { correct, answer: r.options[r.answer], coins: correct ? RIDDLE_COINS : 0, balance } satisfies RiddleResult);
+    if (correct) this.grant(client, "riddler");
+  }
 
   // --- Graveyard Dash queue (the gate is in the plaza; the race is its own room) ---
 
@@ -255,6 +432,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
   onCreate(options?: { area?: unknown }) {
     if (isAreaId(options?.area)) this.area = options.area;
     this.state.haunting = false; // explicit default so clients read a boolean from the start
+    this.state.lamp = this.area === "lighthouse" ? LAMP_AFTER_BLAZE : 0;
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), TICK_MS);
     void this.refreshHealth();
     this.clock.setInterval(() => void this.refreshHealth(), HEALTH_INTERVAL_MS);
@@ -293,7 +471,11 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     markOnline(player.id);
     // Restore the hat and pet the player had, if they still own them.
     restoreWearables(this.db, player.id, ghost, options);
+    // Once a day, the Caretaker leaves a few coins for you.
+    const gifted = claimDailyGift(this.db, player.id, dayKey(Date.now()), DAILY_GIFT_COINS);
     this.sendWallet(client);
+    if (gifted !== null) client.send(TOWN_EVENT.gift, { coins: DAILY_GIFT_COINS, balance: gifted } satisfies DailyGift);
+    this.sendStamps(client);
   }
 
   onLeave(client: Client) {
@@ -306,6 +488,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     this.rounds.delete(client.sessionId);
     this.seances.delete(client.sessionId); // leaving forfeits an unfinished séance
     this.leaveDashQueue(client.sessionId);
+    for (const m of [this.stamps, this.lastEmoteAt, this.sparkleUntil, this.lampTendedAt, this.riddles, this.lastRiddleAt]) m.delete(client.sessionId);
   }
 
   /** Send the player their coins, owned items and recovery code. */
@@ -378,8 +561,8 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
 
   private handleSeanceStart(client: Client) {
     const ghost = this.state.ghosts.get(client.sessionId);
-    if (!ghost || this.seances.has(client.sessionId) || this.area !== "plaza") return;
-    // You have to be at the candle circle, as with fishing at the fountain.
+    if (!ghost || this.seances.has(client.sessionId) || this.area !== SEANCE_AREA) return;
+    // You have to be at the candle circle in the crypt, as with fishing at the jetty.
     if (Math.hypot(ghost.x - SEANCE_SPOT.x, ghost.y - SEANCE_SPOT.y) > SEANCE_RANGE + 40) return;
     this.showSeance(client, extendSequence([], this.random));
   }
@@ -413,13 +596,14 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     const coins = seanceReward(roundsCleared);
     const balance = (coins > 0 ? addCoins(this.db, playerId, coins) : null) ?? getPlayer(this.db, playerId)?.coins ?? 0;
     client.send(SEANCE_EVENT.result, { roundsCleared, coins, balance, reason } satisfies SeanceResult);
+    if (roundsCleared >= 5) this.grant(client, "seance-5");
   }
 
   // --- Ghost Fishing (single-player, request/response, not synced state) ---
 
   private handleFishStart(client: Client) {
     const playerId = this.playerIds.get(client.sessionId);
-    if (playerId === undefined || this.area !== "plaza") return; // the fountain is in the plaza
+    if (playerId === undefined || !this.ghostAt(client, FISH_SPOT)) return; // cast from the lighthouse jetty
     // Starting again replaces any stale round; a fresh round earns from zero.
     this.rounds.set(client.sessionId, { endsAt: Date.now() + ROUND_MS, lastCastAt: 0, earned: 0 });
     const started: FishStarted = { roundMs: ROUND_MS, catches: CATCHES };
@@ -443,6 +627,8 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     round.earned += caught.coins;
     const result: FishCatch = { catchId: caught.id, coins: caught.coins };
     client.send(FISH_EVENT.catch, result);
+    if (caught.coins > 0) this.grant(client, "first-catch");
+    if (caught.id === "spooky-fish") this.grant(client, "spooky-fish");
   }
 
   private handleFishEnd(client: Client) {
@@ -471,7 +657,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
       if (this.area !== "plaza" || !g || Math.hypot(g.x - d.x, g.y - d.y) > PET_STORE.radius + 40) return;
     }
 
-    const balance = buyItem(this.db, playerId, item.id, item.price);
+    const balance = buyItem(this.db, playerId, item.id, priceOf(item, Date.now()));
     if (balance === null) {
       const owned = ownedItems(this.db, playerId).includes(item.id);
       const denied: ShopDenied = { itemId: item.id, reason: owned ? "owned" : "cost" };
@@ -480,6 +666,7 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     }
     const bought: ShopBought = { itemId: item.id, balance };
     client.send(SHOP_EVENT.bought, bought);
+    this.grant(client, item.kind === "pet" ? "pet-pal" : "first-buy");
   }
 
   /** Wear an owned hat (or "" for none). Ignores unowned or non-hat ids. */
@@ -522,6 +709,14 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
         ghost.bubbleUntil = 0;
       }
     });
+    for (const [id, until] of this.sparkleUntil) {
+      if (now < until) continue;
+      this.sparkleUntil.delete(id);
+      const ghost = this.state.ghosts.get(id);
+      if (ghost) ghost.sparkle = false;
+    }
+    // The lighthouse lamp burns down slowly unless the town keeps tending it.
+    if (this.area === "lighthouse" && this.state.lamp > 0) this.state.lamp = Math.max(0, this.state.lamp - LAMP_DECAY_PER_S * dtSeconds);
     // Close any fishing round whose 60 seconds are up.
     for (const [id, round] of this.rounds) {
       if (now >= round.endsAt) {

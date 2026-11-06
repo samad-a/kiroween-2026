@@ -38,6 +38,16 @@ import {
   type ShopBought,
   type ShopDenied,
   type Wallet,
+  TOWN,
+  TOWN_EVENT,
+  type CoinsChanged,
+  type DailyGift,
+  type EmoteBroadcast,
+  type PartyList,
+  type RiddleAsk,
+  type RiddleResult,
+  type StampEarned,
+  type StampList,
 } from "@club-kiro/shared";
 
 /** The synced shape the client reads. Mirrors server/src/state.ts. */
@@ -52,12 +62,16 @@ export interface GhostView {
   /** Pet shop item id, or "". Optional: older servers don't sync it. */
   pet?: string;
   ownerId: string;
+  /** Sparkling after a wish at the fountain. */
+  sparkle?: boolean;
 }
 
 export interface PlazaView {
   ghosts: { forEach(cb: (ghost: GhostView, id: string) => void): void; get(id: string): GhostView | undefined };
   caretakerResting: boolean;
   haunting: boolean;
+  /** The lighthouse lamp, 0 to LAMP_MAX (lighthouse only). */
+  lamp?: number;
 }
 
 export type PlazaRoom = Room<unknown, PlazaView>;
@@ -74,6 +88,7 @@ export interface HauntedRoomView {
   items: { forEach(cb: (item: RoomItemView, i: number) => void): void; length: number; [i: number]: RoomItemView };
   ownerId: string;
   ownerName: string;
+  party?: boolean;
 }
 
 export type HauntedRoomClient = Room<unknown, HauntedRoomView>;
@@ -299,3 +314,24 @@ export function sendDashIntent(room: DashRoomClient, intent: { dx: number; dy: n
 export function onDashResults(room: DashRoomClient, handler: (r: DashResults) => void): void {
   room.onMessage(DASH_EVENT.results, handler);
 }
+
+// --- Town life ---
+
+export const sendEmote = (room: PlazaRoom, emote: number) => room.send(TOWN.emote, { emote });
+export const sendQuickChat = (room: PlazaRoom, index: number) => room.send(TOWN.quick, { index });
+export const makeWish = (room: PlazaRoom) => room.send(TOWN.wish);
+export const tendLamp = (room: PlazaRoom) => room.send(TOWN.tend);
+export const askRiddle = (room: PlazaRoom) => room.send(TOWN.riddle);
+export const answerRiddle = (room: PlazaRoom, choice: number) => room.send(TOWN.riddleAnswer, { choice });
+export const requestStamps = (room: PlazaRoom) => room.send(TOWN.stamps);
+export const requestParties = (room: PlazaRoom) => room.send(TOWN.parties);
+export const setParty = (room: HauntedRoomClient, open: boolean) => room.send(TOWN.party, { open });
+
+export const onEmote = (room: PlazaRoom, h: (m: EmoteBroadcast) => void) => room.onMessage(TOWN_EVENT.emote, h);
+export const onStamps = (room: PlazaRoom, h: (m: StampList) => void) => room.onMessage(TOWN_EVENT.stamps, h);
+export const onStamp = (room: PlazaRoom, h: (m: StampEarned) => void) => room.onMessage(TOWN_EVENT.stamp, h);
+export const onGift = (room: PlazaRoom, h: (m: DailyGift) => void) => room.onMessage(TOWN_EVENT.gift, h);
+export const onRiddle = (room: PlazaRoom, h: (m: RiddleAsk) => void) => room.onMessage(TOWN_EVENT.riddle, h);
+export const onRiddleResult = (room: PlazaRoom, h: (m: RiddleResult) => void) => room.onMessage(TOWN_EVENT.riddleResult, h);
+export const onTownCoins = (room: PlazaRoom, h: (m: CoinsChanged) => void) => room.onMessage(TOWN_EVENT.coins, h);
+export const onParties = (room: PlazaRoom, h: (m: PartyList) => void) => room.onMessage(TOWN_EVENT.parties, h);

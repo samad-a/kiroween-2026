@@ -30,6 +30,7 @@ import { DashState, Racer } from "./DashState.js";
 import { getDb } from "./db/shared.js";
 import { addCoins, getPlayer, resolvePlayer } from "./db/players.js";
 import { recordFinish } from "./db/dash.js";
+import { awardStamp } from "./db/town.js";
 import { restoreWearables } from "./wearables.js";
 import { markOffline, markOnline } from "./presence.js";
 import type { DB } from "./db/index.js";
@@ -180,6 +181,7 @@ export class DashRoom extends Room<{ state: DashState }> {
       let newRecord = false;
       if (r.place) ({ bestMs, newRecord } = recordFinish(this.db, playerId, this.map, r.timeMs));
       const coins = dashPayout(r.place || null, this.racersAtStart, newRecord);
+      if (r.place === 1 && this.racersAtStart > 1) awardStamp(this.db, playerId, "dash-win");
       const balance = (coins > 0 ? addCoins(this.db, playerId, coins) : null) ?? getPlayer(this.db, playerId)?.coins ?? 0;
       const results: DashResults = { map: this.map, standings, coins, balance, bestMs, newRecord };
       client.send(DASH_EVENT.results, results);

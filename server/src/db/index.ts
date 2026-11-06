@@ -67,6 +67,18 @@ const MIGRATIONS: ((db: DB) => void)[] = [
       );
     `);
   },
+  // v5: the stamp book, and the day of the last daily gift.
+  (db) => {
+    db.exec(`
+      CREATE TABLE player_stamps (
+        player_id  INTEGER NOT NULL REFERENCES players(id),
+        stamp_id   TEXT NOT NULL,
+        earned_at  INTEGER NOT NULL,
+        PRIMARY KEY (player_id, stamp_id)
+      );
+      ALTER TABLE players ADD COLUMN last_gift_day TEXT NOT NULL DEFAULT '';
+    `);
+  },
 ];
 
 /** Run any migrations the database has not seen yet, tracked by user_version. */

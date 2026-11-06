@@ -23,6 +23,22 @@ import {
   saveRecoveryCode,
   joinArea,
   sendSetPet,
+  sendEmote,
+  sendQuickChat,
+  makeWish,
+  tendLamp,
+  askRiddle,
+  answerRiddle,
+  requestStamps,
+  requestParties,
+  setParty,
+  onStamps,
+  onStamp,
+  onGift,
+  onRiddle,
+  onRiddleResult,
+  onTownCoins,
+  onParties,
   joinHauntedRoom,
   addFriend,
   removeFriend,
@@ -59,9 +75,28 @@ import {
   isDashMapId,
   type DashQueue,
   type DashResults,
-  FOUNTAIN_CENTRE,
   PET_STORE,
   type ShopItem,
+  FISH_SPOT,
+  SEANCE_AREA,
+  WISH_SPOT,
+  WISH_COST,
+  LAMP_SPOT,
+  LAMP_MAX,
+  RIDDLE_SPOT,
+  NOTICE_SPOT,
+  EMOTES,
+  EMOTE_LABELS,
+  QUICK_CHAT,
+  STAMPS,
+  FEATURED_DISCOUNT,
+  atSpot,
+  featuredItem,
+  priceOf,
+  weeklyEvent,
+  type PartyView,
+  type RiddleAsk,
+  type RiddleResult,
   exitAt,
   type AreaId,
   type JoinOptions,
@@ -79,7 +114,7 @@ import { RoomScene } from "./scenes/RoomScene";
 import { DashScene, type DashHud } from "./scenes/DashScene";
 import { applyBodyClass, isTyping, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
 import { makeModal } from "./modal";
-import { ghostSvg, itemPreviewUrl, svgUrl } from "./art";
+import { emoteSvg, ghostSvg, itemPreviewUrl, svgUrl } from "./art";
 
 const COLOUR_NAMES = ["Moonlight", "Lavender", "Mint", "Pumpkin", "Rose", "Sky"];
 const COIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ffb84d"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#b9741c" stroke-width="2"/></svg>`;
@@ -287,10 +322,12 @@ function enterArea(room: PlazaRoom, area: AreaId) {
   newGame().scene.add("plaza", PlazaScene, true, { room, area, onVisit: offerVisit, onTalk: talkToCaretaker });
   focusCanvas();
   const plaza = area === "plaza";
-  // The mini-games live in the town square; chat works everywhere public.
-  $("fishing").hidden = !plaza;
-  $("seance").hidden = !plaza;
+  // Each game lives in its own place; chat works everywhere public.
+  $("fishing").hidden = area !== FISH_SPOT.area;
+  $("seance").hidden = area !== SEANCE_AREA;
+  $("riddle").hidden = area !== RIDDLE_SPOT.area;
   $("chat").hidden = false;
+  $("party-button").hidden = true;
   // Away from the square, the top-left bar names the place and offers the way back.
   $("room-controls").hidden = plaza;
   $("room-owner").textContent = AREAS[area].name;
@@ -333,6 +370,95 @@ function bindPlazaMessages(room: PlazaRoom) {
     fishing.ended();
     setCoins(msg.balance);
   });
+  onStamps(room, (m) => {
+    stamps = new Set(m.stamps);
+    renderStamps();
+  });
+  onStamp(room, (m) => {
+    stamps.add(m.id);
+    renderStamps();
+    showToast(`New stamp: ${STAMPS.find((s) => s.id === m.id)?.name ?? "a stamp"}!`);
+  });
+  onGift(room, (m) => {
+    setCoins(m.balance);
+    showCaretakerNote(`Welcome back, dear. I saved ${m.coins} coins for you today. Come and see me tomorrow, too.`);
+  });
+  onTownCoins(room, (m) => setCoins(m.balance));
+  onRiddle(room, (m) => riddle.show(m));
+  onRiddleResult(room, (m) => riddle.result(m));
+  onParties(room, (m) => renderParties(m.parties));
+}
+
+// ---------- Stamps, notice board and parties ----------
+
+let stamps = new Set<string>();
+
+function renderStamps() {
+  const list = $<HTMLUListElement>("stamp-list");
+  list.replaceChildren(
+    ...STAMPS.map((s) => {
+      const li = document.createElement("li");
+      const earned = stamps.has(s.id);
+      li.className = earned ? "earned" : "";
+      const seal = document.createElement("span");
+      seal.className = "seal";
+      seal.textContent = earned ? "★" : "?";
+      seal.setAttribute("aria-hidden", "true");
+      const text = document.createElement("div");
+      const b = document.createElement("b");
+      b.textContent = s.name;
+      const how = document.createElement("div");
+      how.className = "how";
+      how.textContent = earned ? `${s.how} Earned!` : s.how;
+      text.append(b, how);
+      li.append(seal, text);
+      return li;
+    }),
+  );
+  $("stamps-count").textContent = `${[...stamps].filter((id) => STAMPS.some((s) => s.id === id)).length} of ${STAMPS.length} stamps collected.`;
+}
+
+function renderNotice() {
+  const now = Date.now();
+  const event = weeklyEvent(now);
+  $("notice-event-title").textContent = `This week: ${event.title}`;
+  $("notice-event").textContent = event.text;
+  const f = featuredItem(now);
+  $("notice-featured").textContent = `${f.name}, now ${priceOf(f, now)} coins instead of ${f.price}. A new item every Monday.`;
+}
+
+function renderParties(parties: readonly PartyView[]) {
+  const list = $<HTMLUListElement>("party-list");
+  list.replaceChildren();
+  const others = parties.filter((p) => p.ownerPlayerId !== myPlayerId());
+  if (others.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty sub";
+    li.textContent = "No parties right now. Open your own from My room.";
+    list.append(li);
+    return;
+  }
+  for (const p of others) {
+    const li = document.createElement("li");
+    const who = document.createElement("span");
+    who.textContent = `${p.ownerName}'s room · ${p.guests} ${p.guests === 1 ? "ghost" : "ghosts"}`;
+    li.append(
+      who,
+      button("Join", () => {
+        modals.notice.close();
+        void visitRoom(p.ownerPlayerId, false);
+      }),
+    );
+    list.append(li);
+  }
+}
+
+/** The owner's party button reads the synced party flag. */
+function syncPartyButton() {
+  const open = roomClient?.state.party === true;
+  const b = $<HTMLButtonElement>("party-button");
+  b.textContent = open ? "Close the party" : "Open a party";
+  b.classList.toggle("secondary", open);
 }
 
 let noteTimer = 0;
@@ -360,7 +486,7 @@ const STORIES = [
 
 const TALK_TOPICS: { ask: string; answer: () => string }[] = [
   { ask: "Who are you?", answer: () => "I'm the Caretaker. I've tended these lanterns for three hundred years, give or take a century. Every ghost who floats in is my guest." },
-  { ask: "How do I earn coins?", answer: () => "Float to the fountain and cast a line. Reel when the marker is in the zone. Each hit makes it faster; land one at full speed and you've caught something." },
+  { ask: "How do I earn coins?", answer: () => "Walk west to Lighthouse Cliffs and fish off the jetty, or keep the lamp lit with friends. In the crypt to the east, hold a séance or answer the old skull's riddles. And I leave you a little gift each day." },
   { ask: "What can I buy?", answer: () => "Hats for your head and trinkets for your room. Buy a decoration, then visit My room and press Decorate to place it." },
   { ask: "Why do you read the chat?", answer: () => "I read every message before the town hears it, so kindness travels and cruelty doesn't. If I stop you, it's only a quiet word between us, never in public." },
   { ask: "Tell me a story.", answer: () => STORIES[Math.floor(Math.random() * STORIES.length)]! },
@@ -477,18 +603,23 @@ async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
   try {
     fishing.stop();
     seance.stop();
+    riddle.stop();
     endTalk();
-    modals.shop.close();
+    closeTownPanels();
     const leaving = plazaRoom;
     plazaRoom = undefined;
     await leaving?.leave();
     roomClient = await joinHauntedRoom(joinOptions(), ownerPlayerId);
     newGame().scene.add("room", RoomScene, true, { room: roomClient, isOwner });
     focusCanvas();
-    // Chat and the mini-games live in the plaza only.
+    // Chat and the mini-games live in the public areas only.
     $("fishing").hidden = true;
     $("seance").hidden = true;
+    $("riddle").hidden = true;
     $("chat").hidden = true;
+    // The owner can open the room as a party, listed on the plaza notice board.
+    $("party-button").hidden = !isOwner;
+    syncPartyButton();
     $("room-controls").hidden = false;
     $("room-owner").textContent = isOwner ? "Your haunted room" : `${roomClient.state.ownerName}'s room`;
     $("room-button").hidden = true;
@@ -512,6 +643,7 @@ async function returnToPlaza(force = false) {
     console.error("room leave failed (continuing):", err);
   }
   roomClient = undefined;
+  $("party-button").hidden = true;
   try {
     enterArea(await joinArea("plaza", joinOptions()), "plaza");
   } catch (err) {
@@ -529,9 +661,9 @@ async function travel(to: AreaId) {
   const from = currentArea;
   fishing.stop();
   seance.stop();
+  riddle.stop();
   endTalk();
-  modals.shop.close();
-  modals.petStore.close();
+  closeTownPanels();
   try {
     const leaving = plazaRoom;
     plazaRoom = undefined;
@@ -563,6 +695,8 @@ editorButton.setAttribute("aria-label", "Decorate");
 const modals = {
   shop: makeModal($("shop")),
   petStore: makeModal($("pet-store")),
+  notice: makeModal($("notice")),
+  stamps: makeModal($("stamps")),
   recovery: makeModal($("recovery")),
   settings: makeModal($("settings")),
   visit: makeModal($("visit-prompt"), () => (pendingVisit = null)),
@@ -572,20 +706,30 @@ const modals = {
 };
 const toggle = (m: (typeof modals)[keyof typeof modals]) => (m.isOpen ? m.close() : m.open());
 const anyModalOpen = () => Object.values(modals).some((m) => m.isOpen);
+function closeTownPanels() {
+  for (const m of [modals.shop, modals.petStore, modals.notice, modals.stamps]) m.close();
+  $("quick-menu").hidden = true;
+}
 
 /** Redraw both catalogues: hats and decorations in the shop, pets in the Pet Store. */
 function renderShop() {
-  renderCatalogue($<HTMLUListElement>("shop-list"), SHOP_ITEMS.filter((i) => i.kind !== "pet"));
-  renderCatalogue($<HTMLUListElement>("pet-list"), SHOP_ITEMS.filter((i) => i.kind === "pet"));
+  // Prices as they are right now, so this week's featured item shows its discount.
+  const now = Date.now();
+  const priced = SHOP_ITEMS.map((i) => ({ ...i, price: priceOf(i, now) }));
+  const featured = featuredItem(now);
+  const shopItems = priced.filter((i) => i.kind !== "pet");
+  renderCatalogue($<HTMLUListElement>("shop-list"), [...shopItems.filter((i) => i.id === featured.id), ...shopItems.filter((i) => i.id !== featured.id)], featured.id);
+  renderCatalogue($<HTMLUListElement>("pet-list"), priced.filter((i) => i.kind === "pet"));
 }
 
-function renderCatalogue(list: HTMLUListElement, items: readonly ShopItem[]) {
+function renderCatalogue(list: HTMLUListElement, items: readonly ShopItem[], featuredId = "") {
   list.replaceChildren();
   let lastKind = "";
   for (const item of items) {
-    if (item.kind !== lastKind) {
-      lastKind = item.kind;
-      list.append(sectionTitle({ hat: "Hats", decoration: "Room decorations", pet: "Pets" }[item.kind]));
+    const section = item.id === featuredId ? `Featured this week: ${Math.round(FEATURED_DISCOUNT * 100)}% off` : { hat: "Hats", decoration: "Room decorations", pet: "Pets" }[item.kind];
+    if (section !== lastKind) {
+      lastKind = section;
+      list.append(sectionTitle(section));
     }
     const has = owned.has(item.id);
     const li = itemCard(item, !has);
@@ -727,6 +871,99 @@ function wireUi() {
     },
     true,
   );
+  // --- Town places: notice board, wishing well, lighthouse lamp ---
+  const noticePrompt = $<HTMLButtonElement>("notice-prompt");
+  const wishPrompt = $<HTMLButtonElement>("wish-prompt");
+  const lampPrompt = $<HTMLButtonElement>("lamp-prompt");
+  noticePrompt.addEventListener("click", () => {
+    renderNotice();
+    renderParties([]);
+    if (plazaRoom) requestParties(plazaRoom);
+    modals.notice.open();
+  });
+  $("notice-close").addEventListener("click", () => modals.notice.close());
+  wishPrompt.addEventListener("click", () => {
+    if (!plazaRoom) return;
+    if (coins < WISH_COST) return showToast("You need a coin to make a wish.");
+    makeWish(plazaRoom);
+    showToast("Plink! Your wish sinks into the glowing water.");
+  });
+  lampPrompt.addEventListener("click", () => plazaRoom && tendLamp(plazaRoom));
+  window.setInterval(() => {
+    const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+    const at = (spot: Parameters<typeof atSpot>[0]) => !!me && !switching && atSpot(spot, currentArea, me);
+    noticePrompt.hidden = !at(NOTICE_SPOT) || modals.notice.isOpen;
+    if (!at(NOTICE_SPOT) && modals.notice.isOpen) modals.notice.close();
+    wishPrompt.hidden = !at(WISH_SPOT) || me?.sparkle === true;
+    lampPrompt.hidden = !at(LAMP_SPOT);
+    if (!lampPrompt.hidden) lampPrompt.textContent = `Tend the lamp · ${Math.round(((plazaRoom?.state.lamp ?? 0) / LAMP_MAX) * 100)}% lit`;
+    if (roomClient) syncPartyButton();
+  }, 300);
+
+  // --- Party button (owner, in their own room) ---
+  $("party-button").addEventListener("click", () => {
+    if (!roomClient) return;
+    const open = roomClient.state.party !== true;
+    setParty(roomClient, open);
+    showToast(open ? "Your room is open! It's listed on the plaza notice board." : "Party closed.");
+  });
+
+  // --- Stamp book ---
+  $("stamps-button").addEventListener("click", () => {
+    if (plazaRoom) requestStamps(plazaRoom); // pick up stamps earned in rooms or races
+    renderStamps();
+    toggle(modals.stamps);
+  });
+  $("stamps-close").addEventListener("click", () => modals.stamps.close());
+
+  // --- Quick chat and emotes ---
+  const quickMenu = $<HTMLDivElement>("quick-menu");
+  const quickButton = $<HTMLButtonElement>("quick-button");
+  const setQuick = (open: boolean) => {
+    quickMenu.hidden = !open;
+    quickButton.setAttribute("aria-expanded", String(open));
+  };
+  const emote = (i: number) => plazaRoom && sendEmote(plazaRoom, i);
+  $("emote-row").replaceChildren(
+    ...EMOTES.map((e, i) => {
+      const b = button("", () => {
+        emote(i);
+        setQuick(false);
+        focusCanvas();
+      }, "secondary");
+      b.setAttribute("aria-label", `${EMOTE_LABELS[e]} (key ${i + 1})`);
+      b.innerHTML = `<img src="${svgUrl(emoteSvg(e))}" alt=""><kbd>${i + 1}</kbd>`;
+      return b;
+    }),
+  );
+  $("quick-list").replaceChildren(
+    ...QUICK_CHAT.map((line, i) =>
+      button(line, () => {
+        if (plazaRoom) sendQuickChat(plazaRoom, i);
+        setQuick(false);
+        focusCanvas();
+      }, "secondary"),
+    ),
+  );
+  quickButton.addEventListener("click", () => setQuick(quickMenu.hasAttribute("hidden")));
+  quickMenu.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      setQuick(false);
+      quickButton.focus();
+    }
+  });
+  // Clicking anywhere else closes the menu.
+  document.addEventListener("pointerdown", (e) => {
+    if (!quickMenu.hidden && e.target instanceof Node && !quickMenu.contains(e.target) && !quickButton.contains(e.target)) setQuick(false);
+  });
+  // Keys 1 to 5 emote, unless typing, in a panel, or playing a game that uses number keys.
+  document.addEventListener("keydown", (e) => {
+    const n = Number(e.key);
+    if (!Number.isInteger(n) || n < 1 || n > EMOTES.length || e.repeat || isTyping() || anyModalOpen()) return;
+    if (!$("seance-round").hidden || !$("riddle-round").hidden || !plazaRoom) return;
+    emote(n - 1);
+  });
+
   // Enter starts typing, the way most games do.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || isTyping() || anyModalOpen() || $("chat").hidden) return;
@@ -807,6 +1044,7 @@ function wireUi() {
 
   fishing.wire();
   seance.wire();
+  riddle.wire();
   wireDash();
 }
 
@@ -816,7 +1054,6 @@ function wireUi() {
 // A miss drops back to the slowest tier. A hit at top speed lands a catch:
 // only then is a cast sent, and the server rolls the catch from the accuracy.
 
-const FISH_RANGE = 160; // how close a ghost must be to cast
 /** Time for the marker to cross the bar once, per tier. The last tier lands the catch. */
 const TIER_SWEEP_MS = [1500, 1050, 760, 540];
 const ZONE_WIDTH = 0.16;
@@ -954,10 +1191,10 @@ const fishing = (() => {
         e.preventDefault();
         if (!e.repeat) reel();
       });
-      // Offer fishing only near the fountain, and only in the plaza.
+      // Offer fishing only on the lighthouse jetty.
       window.setInterval(() => {
         const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
-        const near = !!me && Math.hypot(me.x - FOUNTAIN_CENTRE.x, me.y - FOUNTAIN_CENTRE.y) <= FISH_RANGE;
+        const near = !!me && atSpot(FISH_SPOT, currentArea, me);
         prompt.hidden = active || !near;
       }, 300);
       window.setInterval(() => {
@@ -982,6 +1219,78 @@ const fishing = (() => {
       halt();
       if (plazaRoom) endFishing(plazaRoom);
       focusCanvas();
+    },
+  };
+})();
+
+// ---------- Crypt riddles ----------
+//
+// The skull asks; the server keeps the answer and pays the coins. Keys 1 to 3 answer.
+
+const riddle = (() => {
+  const prompt = $<HTMLButtonElement>("riddle-prompt");
+  const panel = $<HTMLElement>("riddle-round");
+  const question = $<HTMLParagraphElement>("riddle-q");
+  const options = $<HTMLDivElement>("riddle-options");
+  const result = $<HTMLParagraphElement>("riddle-result");
+  const next = $<HTMLButtonElement>("riddle-next");
+  let waiting = false; // a riddle is shown and not yet answered
+
+  const ask = () => {
+    if (!plazaRoom) return;
+    askRiddle(plazaRoom);
+  };
+  const answer = (i: number) => {
+    if (!waiting || !plazaRoom) return;
+    waiting = false;
+    for (const b of options.querySelectorAll("button")) b.disabled = true;
+    options.querySelectorAll("button")[i]?.classList.add("picked");
+    answerRiddle(plazaRoom, i);
+  };
+
+  return {
+    wire() {
+      prompt.addEventListener("click", ask);
+      next.addEventListener("click", ask);
+      $("riddle-stop").addEventListener("click", () => this.stop());
+      document.addEventListener("keydown", (e) => {
+        const n = Number(e.key);
+        if (!waiting || isTyping() || !Number.isInteger(n) || n < 1 || n > 3) return;
+        e.preventDefault();
+        answer(n - 1);
+      });
+      window.setInterval(() => {
+        const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+        const near = !!me && atSpot(RIDDLE_SPOT, currentArea, me);
+        prompt.hidden = !panel.hidden || !near;
+        if (!near && !panel.hidden) this.stop(); // walked away
+      }, 300);
+    },
+    show(m: RiddleAsk) {
+      panel.hidden = false;
+      prompt.hidden = true;
+      question.textContent = m.q;
+      result.textContent = "";
+      result.className = "fish-result";
+      next.hidden = true;
+      options.replaceChildren(...m.options.map((o, i) => button(`${i + 1}. ${o}`, () => answer(i), "secondary")));
+      waiting = true;
+      (options.firstElementChild as HTMLButtonElement | null)?.focus();
+    },
+    result(m: RiddleResult) {
+      setCoins(m.balance);
+      result.textContent = m.correct ? `Right you are! +${m.coins} coins.` : `Not quite. The answer was: ${m.answer}.`;
+      result.className = `fish-result ${m.correct ? "good" : "bad"}`;
+      for (const b of options.querySelectorAll("button")) {
+        if (b.textContent?.endsWith(m.answer)) b.classList.add("right");
+        else if (b.classList.contains("picked")) b.classList.add("wrong");
+      }
+      next.hidden = false;
+      next.focus();
+    },
+    stop() {
+      waiting = false;
+      panel.hidden = true;
     },
   };
 })();

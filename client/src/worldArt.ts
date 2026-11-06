@@ -12,6 +12,10 @@ import {
   PET_COLOURS,
   PET_ITEMS,
   PET_STORE,
+  FISH_SPOT,
+  NOTICE_SPOT,
+  RIDDLE_SPOT,
+  type Emote,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
   SEANCE_SPOT,
@@ -201,7 +205,6 @@ export function plazaSvg(): string {
   <ellipse cx="${fx}" cy="${fy + 30}" rx="300" ry="150" fill="${C.plazaDisc}"/>
   ${rings}
   ${hedge(horizon + 8)}
-  ${seanceCircle(SEANCE_SPOT.x, SEANCE_SPOT.y)}
 </svg>`;
 }
 
@@ -289,7 +292,48 @@ function plazaProps(): PropSprite[] {
     ...pumpkins.map(([x, y], i) => prop(`p-pumpkin-${i}`, pumpkin(x, y), x - 22, y - 20, 44, 38, y + 10)),
     dashGateProp(),
     prop("p-pet-store", petStoreArt(), PET_STORE.x - 84, PET_STORE.ground - 160, 168, 172, PET_STORE.ground),
+    prop("p-notice", noticeBoardArt(), NOTICE_SPOT.x - 56, 200, 112, 108, 300),
   ];
+}
+
+/** The town notice board: two posts and a parchment sheet. Ground line y=300. */
+function noticeBoardArt(): string {
+  const x = NOTICE_SPOT.x;
+  return `<ellipse cx="${x}" cy="302" rx="52" ry="6" fill="${C.shadow}"/>
+  <rect x="${x - 40}" y="226" width="7" height="76" rx="3" fill="#3a2c55"/>
+  <rect x="${x + 33}" y="226" width="7" height="76" rx="3" fill="#3a2c55"/>
+  <rect x="${x - 52}" y="214" width="104" height="58" rx="6" fill="#4e3a2c"/>
+  <rect x="${x - 46}" y="220" width="56" height="46" rx="3" fill="#f2e6c8" transform="rotate(-3 ${x - 18} 243)"/>
+  <rect x="${x + 12}" y="224" width="34" height="38" rx="3" fill="#e8dcbc" transform="rotate(4 ${x + 29} 243)"/>
+  ${[0, 1, 2, 3].map((k) => `<rect x="${x - 40}" y="${230 + k * 9}" width="${40 - (k % 2) * 12}" height="3" rx="1.5" fill="#8a7a5a" opacity="0.7"/>`).join("")}
+  <circle cx="${x - 18}" cy="223" r="2.5" fill="#ff8fb1"/><circle cx="${x + 29}" cy="227" r="2.5" fill="#7fe0c8"/>
+  <path d="M${x - 58} 214 L${x} 200 L${x + 58} 214 Z" fill="#2b2348"/>`;
+}
+
+/** The riddle skull on a pedestal in the crypt's far alcove. Ground line y=300. */
+function riddleSkullArt(): string {
+  const x = RIDDLE_SPOT.x;
+  return `<ellipse cx="${x}" cy="302" rx="34" ry="7" fill="${C.shadow}"/>
+  <rect x="${x - 22}" y="262" width="44" height="40" rx="5" fill="#4e4284"/>
+  <rect x="${x - 28}" y="254" width="56" height="12" rx="4" fill="#6a5c9e"/>
+  <path d="M${x - 18} 252 Q${x - 20} 222 ${x} 220 Q${x + 20} 222 ${x + 18} 252 L${x + 10} 256 L${x - 10} 256 Z" fill="#efe8d6"/>
+  <ellipse cx="${x - 7}" cy="238" rx="5" ry="6" fill="#1d1733"/><ellipse cx="${x + 7}" cy="238" rx="5" ry="6" fill="#1d1733"/>
+  <circle cx="${x - 7}" cy="238" r="1.6" fill="#7fe0c8"/><circle cx="${x + 7}" cy="238" r="1.6" fill="#7fe0c8"/>
+  <path d="M${x - 2} 246 L${x} 242 L${x + 2} 246 Z" fill="#1d1733"/>
+  ${[-6, -2, 2, 6].map((dx) => `<rect x="${x + dx - 1}" y="250" width="2" height="5" fill="#1d1733"/>`).join("")}
+  <text x="${x}" y="286" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="800" font-size="16" fill="#b080ff">?</text>`;
+}
+
+/** An emote: a round badge with an icon, shown over a ghost's head for a moment. */
+export function emoteSvg(e: Emote): string {
+  const icon: Record<Emote, string> = {
+    wave: `<path d="M14 28 Q12 18 16 14 Q18 12 20 15 L21 10 Q23 7 25 10 L25 9 Q27 6 29 9 L29 12 Q31 10 32 13 L31 24 Q30 31 23 32 Q17 32 14 28 Z" fill="#ffd9a8" stroke="#1d1733" stroke-width="1.5" stroke-linejoin="round"/>`,
+    heart: `<path d="M22 32 L12 22 Q8 16 13 12 Q18 9 22 15 Q26 9 31 12 Q36 16 32 22 Z" fill="#ff6f91"/>`,
+    laugh: `<circle cx="22" cy="21" r="11" fill="#ffd34d"/><path d="M16 18 q2 -3 4 0 M24 18 q2 -3 4 0" stroke="#1d1733" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M15 23 Q22 32 29 23 Z" fill="#1d1733"/>`,
+    boo: `<path d="M12 32 L12 19 Q12 9 22 9 Q32 9 32 19 L32 32 L28 29 L25 32 L22 29 L19 32 L16 29 Z" fill="#f4f1ff"/><ellipse cx="18" cy="19" rx="2" ry="3" fill="#1d1733"/><ellipse cx="26" cy="19" rx="2" ry="3" fill="#1d1733"/><ellipse cx="22" cy="25" rx="2.5" ry="3" fill="#1d1733"/>`,
+    star: `<path d="M22 8 L25.5 17 L35 17.5 L27.5 23.5 L30 33 L22 27.5 L14 33 L16.5 23.5 L9 17.5 L18.5 17 Z" fill="#ffcf4d"/>`,
+  };
+  return svg(44, 44, `<circle cx="22" cy="22" r="20" fill="#2b2348" opacity="0.9"/><circle cx="22" cy="22" r="20" fill="none" stroke="#b080ff" stroke-width="2"/>${icon[e]}`);
 }
 
 /** The Pet Store: a crooked little shop with a lit window and a bat on the sign. */
@@ -588,7 +632,22 @@ export function lighthouseSvg(): string {
   const sea = Array.from({ length: 9 }, (_, i) =>
     `<rect x="${(rand(500 + i) * 900).toFixed(0)}" y="${130 + i * 10}" width="${(60 + rand(600 + i) * 140).toFixed(0)}" height="2" rx="1" fill="#6c8fd6" opacity="0.35"/>`,
   ).join("");
-  const fence = Array.from({ length: 14 }, (_, i) => `<rect x="${40 + i * 60}" y="196" width="6" height="26" rx="3" fill="#3a2c55"/>`).join("");
+  // A gap in the fence opens onto the fishing jetty.
+  const jx = FISH_SPOT.x;
+  const fence = Array.from({ length: 14 }, (_, i) => 40 + i * 60)
+    .filter((x) => Math.abs(x + 3 - jx) > 60)
+    .map((x) => `<rect x="${x}" y="196" width="6" height="26" rx="3" fill="#3a2c55"/>`)
+    .join("");
+  const rail = `<rect x="0" y="196" width="${jx - 64}" height="4" rx="2" fill="#3a2c55"/><rect x="${jx + 64}" y="196" width="${860 - jx - 64}" height="4" rx="2" fill="#3a2c55"/>`;
+  const jetty = `<path d="M${jx - 46} 236 L${jx - 34} 112 L${jx + 34} 112 L${jx + 46} 236 Z" fill="#6b4a3a"/>
+    ${[0, 1, 2, 3, 4, 5].map((k) => `<rect x="${jx - 44 + k * 2}" y="${120 + k * 19}" width="${88 - k * 4}" height="3" fill="#4a3226" opacity="0.8"/>`).join("")}
+    <rect x="${jx - 40}" y="108" width="8" height="34" rx="3" fill="#4a3226"/><rect x="${jx + 32}" y="108" width="8" height="34" rx="3" fill="#4a3226"/>
+    <ellipse cx="${jx}" cy="118" rx="60" ry="5" fill="#6c8fd6" opacity="0.25"/>
+    <!-- a rod leaning on the post, line into the sea, and a bucket -->
+    <path d="M${jx + 36} 140 L${jx + 74} 92" stroke="#2b2348" stroke-width="3" stroke-linecap="round"/>
+    <path d="M${jx + 74} 92 Q${jx + 84} 110 ${jx + 80} 128" stroke="#e8e1f7" stroke-width="1" fill="none" opacity="0.7"/>
+    <circle cx="${jx + 80}" cy="128" r="2.5" fill="#ff8fb1"/>
+    <path d="M${jx - 30} 214 L${jx - 26} 196 L${jx - 10} 196 L${jx - 6} 214 Z" fill="#7a6ab0"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.skyTop}"/><stop offset="1" stop-color="#2b2a5e"/></linearGradient></defs>
   <rect width="100%" height="130" fill="url(#sky)"/>
@@ -603,7 +662,7 @@ export function lighthouseSvg(): string {
   <!-- the clifftop -->
   <path d="M0 214 Q160 196 360 210 Q620 226 820 206 Q1020 190 ${W} 210 L${W} ${H} L0 ${H} Z" fill="#33285a"/>
   <path d="M0 214 Q160 196 360 210 Q620 226 820 206 Q1020 190 ${W} 210 L${W} 226 Q1000 208 820 222 Q600 242 360 226 Q160 212 0 230 Z" fill="#3f3270"/>
-  <rect x="0" y="196" width="860" height="4" rx="2" fill="#3a2c55"/>${fence}
+  ${jetty}${rail}${fence}
   <g fill="#2c2350">${[[80, 340, 46], [460, 600, 60], [700, 470, 40], [1120, 640, 54]].map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${(r as number) / 3}"/>`).join("")}</g>
   <path d="M${W + 20} 520 Q900 560 700 480 Q520 420 360 470" stroke="${C.path}" stroke-width="80" stroke-linecap="round" fill="none" opacity="0.7"/>
   ${signpost(1128, 492, "Town Square", false)}
@@ -645,6 +704,7 @@ export function cryptSvg(): string {
   <!-- stairs up to the town on the left -->
   ${[0, 1, 2, 3].map((i) => `<rect x="${0}" y="${420 + i * 26}" width="${70 - i * 12}" height="24" rx="4" fill="${i % 2 ? "#3a3062" : "#433a72"}"/>`).join("")}
   ${webs}
+  ${seanceCircle(SEANCE_SPOT.x, SEANCE_SPOT.y)}
   ${signpost(84, 404, "Town Square", true)}
 </svg>`;
 }
@@ -703,6 +763,7 @@ export function areaProps(area: AreaId): PropSprite[] {
     return [
       prop("c-sarcophagus", sarcophagusArt, 496, 330, 208, 124, 407),
       ...CRYPT_PILLARS.map((p, i) => prop(`c-pillar-${i}`, pillarArt(p.x, p.y), p.x - 42, p.y - 166, 84, 222, p.y + 25)),
+      prop("c-riddle-skull", riddleSkullArt(), RIDDLE_SPOT.x - 40, 210, 80, 102, 300),
     ];
   }
   return plazaProps();

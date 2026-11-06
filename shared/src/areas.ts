@@ -1,6 +1,7 @@
 // Public areas: the plaza plus places you can walk to from it. Each is its own
 // Colyseus room type with the same chat, Caretaker and friends as the plaza;
-// only the walkable space, props and exits differ. Mini-games stay in the plaza.
+// only the walkable space, props, exits and games differ: fishing and the lamp on
+// the cliffs, the séance and riddles in the crypt, the Dash and wishing well in the plaza.
 import { OBSTACLES, PLAZA_WALK_TOP, type Rect } from "./constants.js";
 import type { Point, WalkArea } from "./movement.js";
 
@@ -45,6 +46,7 @@ export const CRYPT_PILLARS = [
 
 const CRYPT_OBSTACLES: readonly Rect[] = [
   { x: 516, y: 384, width: 168, height: 46 }, // sarcophagus
+  { x: 1036, y: 290, width: 48, height: 14 }, // the riddle skull's pedestal
   ...CRYPT_PILLARS.map((p) => pillarFoot(p.x, p.y)),
 ];
 

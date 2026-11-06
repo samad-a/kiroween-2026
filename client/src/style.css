@@ -529,3 +529,29 @@ body.ready #join-loading { display: none; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation: none !important; transition: none !important; }
+
+/* --- Town life: quick chat, riddles, stamps, notice board --- */
+#chat { position: relative; }
+.quick-menu { position: absolute; bottom: calc(100% + 0.5rem); left: 0; width: min(100%, 340px); padding: 0.7rem; display: flex; flex-direction: column; gap: 0.6rem; z-index: 2; }
+.emote-row { display: flex; gap: 0.4rem; justify-content: space-between; }
+.emote-row button { flex: 1; min-height: 2.6rem; padding: 0.2rem; display: grid; place-items: center; position: relative; }
+.emote-row img { width: 28px; height: 28px; }
+.emote-row kbd { position: absolute; top: 2px; right: 4px; font-size: 0.65rem; opacity: 0.7; }
+.quick-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+.quick-list button { min-height: 2.2rem; padding: 0.3rem 0.5rem; font-size: 0.85rem; text-align: left; }
+.riddle-q { margin: 0; line-height: 1.4; }
+.riddle-options { display: flex; flex-direction: column; gap: 0.4rem; }
+.riddle-options button { text-align: left; }
+.riddle-options button.right { background: #2f7d6a; }
+.riddle-options button.wrong { background: #7d2f4a; }
+.stamp-list, .party-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.stamp-list li { display: grid; grid-template-columns: 2.4rem 1fr; gap: 0.6rem; align-items: center; padding: 0.5rem; border-radius: 12px; border: 1px solid var(--line); opacity: 0.55; }
+.stamp-list li.earned { opacity: 1; border-color: #b080ff; }
+.stamp-list .seal { width: 2.4rem; height: 2.4rem; border-radius: 50%; display: grid; place-items: center; background: #2b2348; font-weight: 800; }
+.stamp-list li.earned .seal { background: #7138cc; color: #fff; }
+.stamp-list .how { font-size: 0.85rem; opacity: 0.85; }
+.party-list li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.party-list li.empty { opacity: 0.75; }
+.notice-h { margin: 0.6rem 0 0.2rem; font-size: 1rem; }
+#riddle { display: flex; flex-direction: column; gap: 0.5rem; }
+#riddle .row button { flex: 1; }

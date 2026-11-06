@@ -58,6 +58,7 @@ export const PET_STORE = { x: 860, ground: 256, door: { x: 860, y: 290 }, radius
 export const OBSTACLES: readonly Rect[] = [
   FOUNTAIN_FOOT,
   { x: PET_STORE.x - 62, y: PET_STORE.ground - 22, width: 124, height: 22 }, // pet store front wall
+  { x: 206, y: 292, width: 88, height: 10 }, // notice board posts (matches NOTICE_SPOT in town.ts)
   { x: 946, y: 262, width: 88, height: 26 }, // clock tower base
   ...LAMPS.map((l) => ({ x: l.x - 8, y: l.y + 82, width: 16, height: 10 })), // lamp-post bases
   { x: 32, y: 682, width: 18, height: 8 }, // tree trunks (match worldArt tree())

@@ -4,6 +4,10 @@ import {
   FISH,
   FISH_EVENT,
   PLAZA_ROOM,
+  AREAS,
+  FISH_SPOT,
+  getShopItem,
+  priceOf,
   SHOP,
   SHOP_EVENT,
   type FishEnded,
@@ -39,13 +43,17 @@ async function until(check: () => boolean, timeoutMs = 2000): Promise<void> {
 
 describe("fishing round", () => {
   it("credits the sum of catches exactly once when the round ends", async () => {
-    const room = await colyseus.createRoom<PlazaRoom>(PLAZA_ROOM);
+    // Fishing is on the lighthouse jetty.
+    const room = await colyseus.createRoom<PlazaRoom>(AREAS.lighthouse.room, { area: "lighthouse" });
     room.autoDispose = false;
     const client = await colyseus.connectTo(room, { name: "Angler" });
     await until(() => room.state.ghosts.has(client.sessionId));
+    const ghost = room.state.ghosts.get(client.sessionId)!;
+    ghost.x = FISH_SPOT.x;
+    ghost.y = FISH_SPOT.y;
 
     const playerId = (room as unknown as { playerIds: Map<string, number> }).playerIds.get(client.sessionId)!;
-    expect(getPlayer(room.db, playerId)!.coins).toBe(0);
+    const start = getPlayer(room.db, playerId)!.coins; // the daily gift
 
     let ended: FishEnded | undefined;
     client.onMessage(FISH_EVENT.ended, (e: FishEnded) => (ended = e));
@@ -66,12 +74,12 @@ describe("fishing round", () => {
     client.send(FISH.end, {});
     await until(() => ended !== undefined);
     expect(ended!.coinsEarned).toBe(earned);
-    expect(ended!.balance).toBe(earned);
+    expect(ended!.balance).toBe(start + earned);
 
     // A second end is a no-op: no further credit.
     client.send(FISH.end, {});
     await room.waitForMessage(FISH.end);
-    expect(ended!.balance).toBe(earned);
+    expect(ended!.balance).toBe(start + earned);
   });
 
   it("ignores casts with no active round", async () => {
@@ -94,16 +102,16 @@ describe("shop buy", () => {
 
     // Give the player coins directly through the repo the room uses.
     const playerId = (room as unknown as { playerIds: Map<string, number> }).playerIds.get(client.sessionId)!;
-    addCoins(room.db, playerId, 100);
+    const balance = addCoins(room.db, playerId, 100)!;
 
     let bought: ShopBought | undefined;
     let denied: ShopDenied | undefined;
     client.onMessage(SHOP_EVENT.bought, (b: ShopBought) => (bought = b));
     client.onMessage(SHOP_EVENT.denied, (d: ShopDenied) => (denied = d));
 
-    client.send(SHOP.buy, { itemId: "hat-witch" }); // price 20
+    client.send(SHOP.buy, { itemId: "hat-witch" }); // price 20, less if featured this week
     await until(() => bought !== undefined);
-    expect(bought!.balance).toBe(80);
+    expect(bought!.balance).toBe(balance - priceOf(getShopItem("hat-witch")!, Date.now()));
 
     client.send(SHOP.buy, { itemId: "hat-witch" });
     await until(() => denied !== undefined);

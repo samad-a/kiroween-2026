@@ -30,6 +30,9 @@ import { getLayout, saveLayout } from "./db/rooms.js";
 import { playerName } from "./db/friends.js";
 import { restoreWearables } from "./wearables.js";
 import { markOffline, markOnline } from "./presence.js";
+import { awardStamp } from "./db/town.js";
+import { closeParty, openParty, setPartyGuests } from "./parties.js";
+import { TOWN } from "@club-kiro/shared";
 import type { DB } from "./db/index.js";
 
 const TICK_MS = 50;
@@ -56,6 +59,18 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     [ROOM.place]: (client: Client, payload: unknown) => this.handlePlace(client, payload),
     [ROOM.move]: (client: Client, payload: unknown) => this.handleMoveItem(client, payload),
     [ROOM.remove]: (client: Client, payload: unknown) => this.handleRemoveItem(client, payload),
+    // The owner opens or closes the room as a party, listed on the plaza notice board.
+    [TOWN.party]: (client: Client, payload: unknown) => {
+      if (!this.isOwner(client)) return;
+      const open = (payload as { open?: unknown } | null)?.open === true;
+      this.state.party = open;
+      if (open) {
+        openParty(this.ownerPlayerId, this.state.ownerName, this.state.ghosts.size);
+        awardStamp(this.db, this.ownerPlayerId, "party-host");
+      } else {
+        closeParty(this.ownerPlayerId);
+      }
+    },
     move: (client: Client, payload: unknown) => {
       const target = parseMove(payload);
       if (target && this.state.ghosts.has(client.sessionId)) this.targets.set(client.sessionId, target);
@@ -92,6 +107,8 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     restoreWearables(this.db, player.id, ghost, options);
     this.state.ghosts.set(client.sessionId, ghost);
     markOnline(player.id); // still "online" to friends while visiting a room
+    if (player.id !== this.ownerPlayerId) awardStamp(this.db, player.id, "visitor");
+    setPartyGuests(this.ownerPlayerId, this.state.ghosts.size);
   }
 
   onLeave(client: Client) {
@@ -99,6 +116,16 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     this.targets.delete(client.sessionId);
     const playerId = (client.userData as { playerId?: number } | undefined)?.playerId;
     if (playerId !== undefined) markOffline(playerId);
+    // The party ends when its host goes home.
+    if (playerId === this.ownerPlayerId) {
+      this.state.party = false;
+      closeParty(this.ownerPlayerId);
+    }
+    setPartyGuests(this.ownerPlayerId, this.state.ghosts.size);
+  }
+
+  onDispose() {
+    closeParty(this.ownerPlayerId);
   }
 
   /** True if this client is the room's owner. */

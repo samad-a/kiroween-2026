@@ -20,6 +20,8 @@ export const HauntedRoomState = schema(
     /** The owner's player id (as a string). Only this player may edit. */
     ownerId: t.string(),
     ownerName: t.string(),
+    /** The owner has opened this room as a party, listed on the plaza notice board. */
+    party: t.boolean(),
   },
   "HauntedRoomState",
 );

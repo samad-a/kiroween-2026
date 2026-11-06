@@ -87,6 +87,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2.2.6 3.5 2.8 3.5 6"/></svg>
           <span class="label">Friends</span><span id="friends-online" class="badge" hidden></span>
         </button>
+        <button type="button" id="stamps-button" class="secondary" aria-label="Stamp book">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M12 6.5l1 2 2 .3-1.5 1.4.4 2-1.9-1-1.9 1 .4-2L9 8.8l2-.3z"/></svg>
+          <span class="label">Stamps</span>
+        </button>
         <button type="button" id="settings-button" class="secondary icon-btn" aria-label="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
         </button>
@@ -99,18 +103,37 @@
           <span class="label">Plaza</span>
         </button>
         <p id="room-owner" class="room-owner"></p>
+        <button type="button" id="party-button" class="secondary" hidden>Open a party</button>
       </div>
 
       <!-- Bottom dock: everything here stacks upward, so nothing overlaps. -->
       <div id="dock">
         <button type="button" id="exit-prompt" class="fish-prompt" hidden>Go</button>
         <button type="button" id="pet-prompt" class="fish-prompt" hidden>Enter the Pet Store</button>
+        <button type="button" id="notice-prompt" class="fish-prompt" hidden>Read the notice board</button>
+        <button type="button" id="wish-prompt" class="fish-prompt" hidden>Toss a coin and make a wish (1 coin)</button>
+        <button type="button" id="lamp-prompt" class="fish-prompt" hidden>Tend the lamp</button>
+
+        <!-- Crypt riddles: the old skull asks, you pick one of three answers. -->
+        <div id="riddle" hidden>
+          <button type="button" id="riddle-prompt" class="fish-prompt" hidden>Ask the skull a riddle</button>
+          <div id="riddle-round" class="fish-round surface" hidden role="group" aria-label="Crypt riddle">
+            <div class="fish-head"><p class="fish-title">The Riddle Skull</p></div>
+            <p id="riddle-q" class="riddle-q"></p>
+            <div id="riddle-options" class="riddle-options"></div>
+            <p id="riddle-result" class="fish-result" role="status" aria-live="polite"></p>
+            <div class="row">
+              <button type="button" id="riddle-next" hidden>Another riddle</button>
+              <button type="button" id="riddle-stop" class="secondary">Leave</button>
+            </div>
+          </div>
+        </div>
         <p id="help" class="hint surface" hidden>
           Click to float · <kbd>WASD</kbd> to move · Click a ghost or the Caretaker to talk
         </p>
 
         <div id="fishing" hidden>
-          <button type="button" id="fish-prompt" class="fish-prompt" hidden>Cast a line at the fountain</button>
+          <button type="button" id="fish-prompt" class="fish-prompt" hidden>Cast a line off the jetty</button>
           <div id="fish-round" class="fish-round surface" hidden role="group" aria-label="Ghost Fishing">
             <div class="fish-head">
               <p class="fish-title">Ghost Fishing</p>
@@ -168,7 +191,15 @@
             <p id="talk-said" class="sr-only" aria-live="polite"></p>
             <div id="talk-topics" class="talk-topics"></div>
           </div>
+          <!-- Quick chat and emotes: pre-approved, so they go out at once. -->
+          <div id="quick-menu" class="quick-menu surface" hidden role="menu" aria-label="Quick chat and emotes">
+            <div id="emote-row" class="emote-row"></div>
+            <div id="quick-list" class="quick-list"></div>
+          </div>
           <form id="chat-form" class="surface">
+            <button type="button" id="quick-button" class="ghost-btn icon-btn" aria-label="Quick chat and emotes" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5q3.5 3.5 7 0M9 9.5h.01M15 9.5h.01"/></svg>
+            </button>
             <label for="chat-input" class="sr-only">Say something</label>
             <input id="chat-input" maxlength="120" autocomplete="off" placeholder="Say something kind…" />
             <button type="submit" class="icon-btn" aria-label="Send">
@@ -217,8 +248,34 @@
           <h2 id="shop-title">Haunted Shop</h2>
           <button type="button" id="shop-close" class="ghost-btn icon-btn" aria-label="Close shop">✕</button>
         </div>
-        <p class="sub">Hats for your ghost, decorations for your room. Earn coins fishing at the fountain.</p>
+        <p class="sub">Hats for your ghost, decorations for your room. Earn coins fishing off the lighthouse jetty.</p>
         <div class="scroll"><ul id="shop-list" class="shop-grid"></ul></div>
+      </section>
+
+      <!-- Stamp book -->
+      <section id="stamps" class="dialog modal surface" hidden aria-labelledby="stamps-title">
+        <div class="dialog-head">
+          <h2 id="stamps-title">Stamp book</h2>
+          <button type="button" id="stamps-close" class="ghost-btn icon-btn" aria-label="Close stamp book">✕</button>
+        </div>
+        <p id="stamps-count" class="sub"></p>
+        <div class="scroll"><ul id="stamp-list" class="stamp-list"></ul></div>
+      </section>
+
+      <!-- Town notice board: this week's event, the featured item, and open room parties -->
+      <section id="notice" class="dialog modal surface" hidden aria-labelledby="notice-title">
+        <div class="dialog-head">
+          <h2 id="notice-title">Town notice board</h2>
+          <button type="button" id="notice-close" class="ghost-btn icon-btn" aria-label="Close notice board">✕</button>
+        </div>
+        <div class="scroll">
+          <h3 id="notice-event-title" class="notice-h"></h3>
+          <p id="notice-event" class="sub"></p>
+          <h3 class="notice-h">Featured in the shop</h3>
+          <p id="notice-featured" class="sub"></p>
+          <h3 class="notice-h">Room parties</h3>
+          <ul id="party-list" class="party-list"></ul>
+        </div>
       </section>
 
       <!-- Pet Store: opened at its door in the plaza -->

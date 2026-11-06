@@ -1,4 +1,4 @@
-// Séance: a Simon-style memory game at the candle circle in the plaza.
+// Séance: a Simon-style memory game at the candle circle in the Old Crypt.
 // The server picks the rune sequence, checks each answer and pays the coins;
 // the client only shows the runes and collects clicks.
 
@@ -9,8 +9,9 @@ export const RUNES = ["moon", "star", "eye", "candle"] as const;
 export type Rune = (typeof RUNES)[number];
 
 /** Where the candle circle is drawn, and how close you must float to start. */
-export const SEANCE_SPOT = { x: 250, y: 330 } as const;
-export const SEANCE_RANGE = 130;
+export const SEANCE_AREA = "crypt" as const;
+export const SEANCE_SPOT = { x: 600, y: 560 } as const;
+export const SEANCE_RANGE = 120;
 
 /** A perfect séance ends here, so a round can't be farmed forever. */
 export const SEANCE_MAX_ROUNDS = 12;

@@ -19,6 +19,8 @@ export const Ghost = schema(
     pet: t.string(),
     /** This ghost's owner player id (as a string), so others can visit their room. */
     ownerId: t.string(),
+    /** Sparkling after a wish at the fountain. */
+    sparkle: t.boolean(),
   },
   "Ghost",
 );
@@ -31,6 +33,8 @@ export const PlazaState = schema(
     caretakerResting: t.boolean(),
     /** True during a midnight haunting event; the client dims the plaza. */
     haunting: t.boolean(),
+    /** The lighthouse lamp, 0 to LAMP_MAX. Only the lighthouse area changes it. */
+    lamp: t.float64(),
   },
   "PlazaState",
 );

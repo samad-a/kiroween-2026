@@ -5,6 +5,9 @@
 export const FISH = { start: "fish:start", cast: "fish:cast", end: "fish:end" } as const;
 export const FISH_EVENT = { started: "fish:started", catch: "fish:catch", ended: "fish:ended" } as const;
 
+/** The fishing jetty on Lighthouse Cliffs, and how close you must float to cast. */
+export const FISH_SPOT = { area: "lighthouse", x: 560, y: 240, radius: 120 } as const;
+
 /** A round lasts one minute. */
 export const ROUND_MS = 60_000;
 /** Minimum gap between casts, so a client cannot spam to farm coins. */

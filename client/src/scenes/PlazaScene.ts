@@ -8,6 +8,11 @@ import {
   PLAZA_WIDTH,
   keysToTarget,
   type AreaId,
+  EMOTES,
+  LAMP_MAX,
+  SEANCE_AREA,
+  TOWN_EVENT,
+  type EmoteBroadcast,
 } from "@club-kiro/shared";
 import {
   AREA_LIGHTS,
@@ -15,6 +20,7 @@ import {
   LANTERNS,
   LIGHTHOUSE_LAMP,
   SEANCE_CANDLES,
+  emoteSvg,
   areaSvg,
   petTextures,
   plazaSignsSvg,
@@ -56,10 +62,14 @@ const feetDepth = (y: number) => y + GHOST_FOOT_OFFSET;
 
 /** Friendly tips the Caretaker offers now and then. Purely client-side flavour. */
 const CARETAKER_TIPS = [
-  "Float to the fountain to fish for coins, little one.",
+  "The jetty at Lighthouse Cliffs is the place to fish for coins, little one.",
   "Click another ghost to drop in on their room.",
   "The shop has hats. A ghost should look their best.",
   "Kind words keep the lanterns bright.",
+  "The notice board lists this week's doings, and any room parties.",
+  "Toss a coin in the fountain and make a wish. You'll sparkle for a while.",
+  "Down in the crypt, an old skull loves a riddle. So do the séance candles.",
+  "Press 1 to 5 to wave, laugh or boo. Enter starts typing.",
 ];
 const TIP_EVERY_MS = 40_000;
 /** Long enough to read: a base plus time per word. */
@@ -74,6 +84,8 @@ interface GhostSprite {
   shownBubble: string;
   facing: number;
   pet?: Pet;
+  /** The wishing-well glow, shown while the ghost sparkles. */
+  sparkle: Phaser.GameObjects.Image;
 }
 
 export class PlazaScene extends Phaser.Scene {
@@ -93,6 +105,8 @@ export class PlazaScene extends Phaser.Scene {
   private bubbleTimer?: Phaser.Time.TimerEvent;
   private greeted = false;
   private wasHaunting = false;
+  /** The lighthouse beam; its brightness follows the shared lamp level. */
+  private beam?: Phaser.GameObjects.Graphics;
 
   constructor() {
     super("plaza");
@@ -122,6 +136,7 @@ export class PlazaScene extends Phaser.Scene {
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
     for (const t of petTextures) this.load.svg(t.key, t.url);
     for (const p of this.props) this.load.svg(p.key, svgUrl(p.svg), { width: p.w, height: p.h });
+    for (const e of EMOTES) this.load.svg(`emote-${e}`, svgUrl(emoteSvg(e)), { width: 44, height: 44 });
   }
 
   /** Upright props for this area, drawn as depth-sorted sprites. */
@@ -165,7 +180,26 @@ export class PlazaScene extends Phaser.Scene {
       callback: () => !this.caretakerTalking && this.caretakerSay(Phaser.Utils.Array.GetRandom(CARETAKER_TIPS)),
     });
 
+    this.room.onMessage(TOWN_EVENT.emote, (m: EmoteBroadcast) => this.showEmote(m));
     this.room.onLeave(() => this.scene.pause());
+  }
+
+  /** Pop an emote badge over a ghost's head; it floats up and fades. */
+  private showEmote(m: EmoteBroadcast) {
+    const sprite = this.sprites.get(m.sessionId);
+    const emote = EMOTES[m.emote];
+    if (!sprite || !emote || !this.scene.isActive()) return;
+    const c = sprite.container;
+    // Inside the ghost's container, so it follows the ghost as it moves.
+    const badge = this.add.image(30, -56, `emote-${emote}`);
+    c.add(badge);
+    if (this.reducedMotion) {
+      this.time.delayedCall(1800, () => badge.destroy());
+      return;
+    }
+    badge.setScale(0.4);
+    this.tweens.add({ targets: badge, scale: 1, duration: 220, ease: "Back.easeOut" });
+    this.tweens.add({ targets: badge, y: badge.y - 24, alpha: 0, delay: 1300, duration: 600, onComplete: () => badge.destroy() });
   }
 
   update(time: number, deltaMs: number) {
@@ -173,6 +207,7 @@ export class PlazaScene extends Phaser.Scene {
     this.handleKeys(time);
     this.syncHaunting();
     this.driftCaretaker(deltaMs / 1000);
+    if (this.beam) this.beam.setAlpha(0.15 + 0.85 * Math.min(1, (this.room.state.lamp ?? 0) / LAMP_MAX));
   }
 
   // --- The Caretaker: a visible, client-side NPC that greets and gives tips ---
@@ -229,6 +264,12 @@ export class PlazaScene extends Phaser.Scene {
   private addAreaLights() {
     if (this.isPlaza) return;
     const key = glowTexture(this);
+    // Little candle flames around the séance circle.
+    if (this.area === SEANCE_AREA) {
+      for (const c of SEANCE_CANDLES) {
+        this.add.image(c.x, c.y - 20, key).setTint(0xffb84d).setAlpha(0.22).setScale(0.18).setBlendMode(Phaser.BlendModes.ADD);
+      }
+    }
     for (const l of AREA_LIGHTS[this.area as Exclude<AreaId, "plaza">]) {
       const glow = this.add.image(l.x, l.y, key).setTint(l.tint).setAlpha(0.3).setScale(l.scale).setBlendMode(Phaser.BlendModes.ADD);
       if (!this.reducedMotion) {
@@ -240,6 +281,7 @@ export class PlazaScene extends Phaser.Scene {
       // from out over the sea on the left, up through the sky, to the right. It never
       // points down at the clifftop. Rotation 0 points left; positive turns it upward.
       const beam = this.add.graphics({ x: LIGHTHOUSE_LAMP.x, y: LIGHTHOUSE_LAMP.y }).setBlendMode(Phaser.BlendModes.ADD).setDepth(140000);
+      this.beam = beam;
       for (let i = 1; i <= 5; i++) {
         const spread = 14 * i;
         beam.fillStyle(0xfff1c2, 0.022).fillTriangle(0, -2, -900, -spread, -900, spread);
@@ -265,10 +307,6 @@ export class PlazaScene extends Phaser.Scene {
         repeat: -1,
         ease: "Sine.easeInOut",
       });
-    }
-    // Little candle flames around the séance circle.
-    for (const c of SEANCE_CANDLES) {
-      this.add.image(c.x, c.y - 20, key).setTint(0xffb84d).setAlpha(0.22).setScale(0.18).setBlendMode(Phaser.BlendModes.ADD);
     }
     // The fountain water glows softly too.
     this.add.image(FOUNTAIN_X, FOUNTAIN_Y + 18, key).setTint(0x7fe0c8).setAlpha(0.14).setScale(1.1, 0.55).setBlendMode(Phaser.BlendModes.ADD);
@@ -360,6 +398,7 @@ export class PlazaScene extends Phaser.Scene {
       c.setDepth(feetDepth(c.y)); // lower on screen draws in front, props included
       this.updateBubble(sprite, ghost.bubble);
       this.updateHat(sprite, ghost.hat);
+      sprite.sparkle.setVisible(ghost.sparkle === true);
       sprite.pet = syncPet(this, sprite.pet, ghost.pet ?? "", c.x, c.y, this.reducedMotion);
       sprite.pet?.update(dt, c.x, c.y, sprite.facing, feetDepth(c.y) - 0.5);
       if (!this.greeted && id === this.room.sessionId) {
@@ -410,7 +449,12 @@ export class PlazaScene extends Phaser.Scene {
     // Hat sits just above the ghost body; texture set in updateHat.
     const hat = this.add.image(GHOST_HEAD_OFFSET_X, -30, hatTextureKey("hat-witch")).setVisible(false);
 
-    const container = this.add.container(ghost.x, ghost.y, [groundShadow(this), body, hat, label, bubble.container]).setAlpha(0);
+    // A golden shimmer behind the ghost after a wish at the fountain.
+    const sparkle = this.add.image(0, 0, glowTexture(this)).setTint(0xffd96b).setAlpha(0.5).setScale(0.55).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    if (!this.reducedMotion) {
+      this.tweens.add({ targets: sparkle, alpha: { from: 0.3, to: 0.65 }, scale: { from: 0.5, to: 0.62 }, duration: 700, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
+    const container = this.add.container(ghost.x, ghost.y, [groundShadow(this), sparkle, body, hat, label, bubble.container]).setAlpha(0);
 
     // Join effect: a small puff — fade and pop in from slightly small.
     if (this.reducedMotion) {
@@ -422,7 +466,7 @@ export class PlazaScene extends Phaser.Scene {
       // Body and hat bob together so the hat stays on.
       this.tweens.add({ targets: [body, hat], y: "-=6", duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
-    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, shownBubble: "", facing: 1 };
+    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, shownBubble: "", facing: 1, sparkle };
     if (isMe) followMe(this, container);
     this.updateHat(sprite, ghost.hat);
     this.sprites.set(id, sprite);
