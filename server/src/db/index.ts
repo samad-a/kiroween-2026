@@ -42,6 +42,19 @@ const MIGRATIONS: ((db: DB) => void)[] = [
       );
     `);
   },
+  // v3: the ghost name a player last used (display only), and one-way friends lists.
+  (db) => {
+    db.exec(`
+      ALTER TABLE players ADD COLUMN name TEXT NOT NULL DEFAULT '';
+      CREATE TABLE friends (
+        player_id  INTEGER NOT NULL REFERENCES players(id),
+        friend_id  INTEGER NOT NULL REFERENCES players(id),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (player_id, friend_id),
+        CHECK (player_id <> friend_id)
+      );
+    `);
+  },
 ];
 
 /** Run any migrations the database has not seen yet, tracked by user_version. */

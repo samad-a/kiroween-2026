@@ -16,6 +16,7 @@ import {
   parseRemoveItem,
   randomName,
   stepGhost,
+  ROOM_AREA,
   type JoinOptions,
   type PlacedItem,
   type Point,
@@ -26,6 +27,8 @@ import { HauntedRoomState, RoomItem } from "./RoomState.js";
 import { getDb } from "./db/shared.js";
 import { getPlayer, ownsItem, resolvePlayer } from "./db/players.js";
 import { getLayout, saveLayout } from "./db/rooms.js";
+import { playerName } from "./db/friends.js";
+import { markOffline, markOnline } from "./presence.js";
 import type { DB } from "./db/index.js";
 
 const TICK_MS = 50;
@@ -56,6 +59,10 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
       const target = parseMove(payload);
       if (target && this.state.ghosts.has(client.sessionId)) this.targets.set(client.sessionId, target);
     },
+    // Keys released: stop on the spot rather than walking back to a stale position.
+    stop: (client: Client) => {
+      this.targets.delete(client.sessionId);
+    },
   };
 
   onCreate(options?: RoomJoinOptions) {
@@ -63,7 +70,8 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     this.ownerPlayerId = Number(options?.ownerPlayerId) || 0;
     this.state.ownerId = String(this.ownerPlayerId);
     const owner = this.ownerPlayerId ? getPlayer(this.db, this.ownerPlayerId) : null;
-    this.state.ownerName = owner ? `Player ${owner.id}` : "A ghost";
+    // Show the owner's ghost name ("Misty Moth's room"), not their internal id.
+    this.state.ownerName = owner ? playerName(this.db, owner.id) || "A ghost" : "A ghost";
     // Load the owner's saved layout into synced state.
     for (const item of getLayout(this.db, this.ownerPlayerId)) this.addItemToState(item);
     this.setSimulationInterval((dtMs) => this.tick(dtMs / 1000), TICK_MS);
@@ -84,11 +92,14 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
       ghost.hat = options.hat;
     }
     this.state.ghosts.set(client.sessionId, ghost);
+    markOnline(player.id); // still "online" to friends while visiting a room
   }
 
   onLeave(client: Client) {
     this.state.ghosts.delete(client.sessionId);
     this.targets.delete(client.sessionId);
+    const playerId = (client.userData as { playerId?: number } | undefined)?.playerId;
+    if (playerId !== undefined) markOffline(playerId);
   }
 
   /** True if this client is the room's owner. */
@@ -142,7 +153,8 @@ export class HauntedRoom extends Room<{ state: HauntedRoomState }> {
     for (const [id, target] of this.targets) {
       const ghost = this.state.ghosts.get(id);
       if (!ghost) continue;
-      const next = stepGhost({ x: ghost.x, y: ghost.y }, target, dtSeconds);
+      // Rooms have their own floor line and none of the plaza's props.
+      const next = stepGhost({ x: ghost.x, y: ghost.y }, target, dtSeconds, ROOM_AREA);
       if (next.x === ghost.x && next.y === ghost.y) {
         this.targets.delete(id);
         continue;

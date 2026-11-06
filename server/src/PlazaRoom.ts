@@ -29,6 +29,23 @@ import {
   parseMove,
   randomName,
   stepGhost,
+  FRIENDS,
+  FRIENDS_EVENT,
+  parseFriendTarget,
+  type FriendsList,
+  SEANCE,
+  SEANCE_EVENT,
+  SEANCE_MAX_ROUNDS,
+  SEANCE_RANGE,
+  SEANCE_SPOT,
+  extendSequence,
+  parseSeanceAnswer,
+  seanceDeadlineMs,
+  seanceReward,
+  sequenceMatches,
+  type SeanceEndReason,
+  type SeanceResult,
+  type SeanceShow,
   type CaretakerNote,
   type ChatBroadcast,
   type ChatMessage,
@@ -47,6 +64,8 @@ import { createModerator, type Moderator } from "./caretaker/moderate.js";
 import { getDb } from "./db/shared.js";
 import { addCoins, buyItem, displayRecoveryCode, getPlayer, ownedItems, ownsItem, resolvePlayer } from "./db/players.js";
 import { rollCatch } from "./fishing.js";
+import { addFriend, listFriends, removeFriend, setPlayerName } from "./db/friends.js";
+import { isOnline, markOffline, markOnline } from "./presence.js";
 import type { DB } from "./db/index.js";
 
 export const TICK_MS = 50;
@@ -98,6 +117,10 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
       const target = parseMove(payload);
       if (target && this.state.ghosts.has(client.sessionId)) this.targets.set(client.sessionId, target);
     },
+    // Keys released: stop on the spot rather than walking back to a stale position.
+    [MESSAGE.stop]: (client: Client) => {
+      this.targets.delete(client.sessionId);
+    },
     [CHAT_ROOM_MESSAGE.chat]: (client: Client, payload: unknown) => {
       void this.handleChat(client, payload);
     },
@@ -106,7 +129,33 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     [FISH.end]: (client: Client) => this.handleFishEnd(client),
     [SHOP.buy]: (client: Client, payload: unknown) => this.handleBuy(client, payload),
     [ROOM.setHat]: (client: Client, payload: unknown) => this.handleSetHat(client, payload),
+    [FRIENDS.add]: (client: Client, payload: unknown) => {
+      const me = this.playerIds.get(client.sessionId);
+      const target = parseFriendTarget(payload);
+      if (me !== undefined && target) addFriend(this.db, me, target.playerId);
+      this.sendFriends(client);
+    },
+    [FRIENDS.remove]: (client: Client, payload: unknown) => {
+      const me = this.playerIds.get(client.sessionId);
+      const target = parseFriendTarget(payload);
+      if (me !== undefined && target) removeFriend(this.db, me, target.playerId);
+      this.sendFriends(client);
+    },
+    [FRIENDS.list]: (client: Client) => this.sendFriends(client),
+    [SEANCE.start]: (client: Client) => this.handleSeanceStart(client),
+    [SEANCE.answer]: (client: Client, payload: unknown) => this.handleSeanceAnswer(client, payload),
+    [SEANCE.end]: (client: Client) => this.endSeance(client, "left"),
   };
+
+  /** Send the player their friends list, with who's online right now. */
+  private sendFriends(client: Client) {
+    const me = this.playerIds.get(client.sessionId);
+    if (me === undefined) return;
+    const list: FriendsList = {
+      friends: listFriends(this.db, me).map((f) => ({ ...f, online: isOnline(f.playerId) })),
+    };
+    client.send(FRIENDS_EVENT.list, list);
+  }
 
   onCreate() {
     this.state.haunting = false; // explicit default so clients read a boolean from the start
@@ -142,6 +191,8 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     this.playerIds.set(client.sessionId, player.id);
     client.userData = { playerId: player.id };
     ghost.ownerId = String(player.id);
+    setPlayerName(this.db, player.id, ghost.name); // shown to people who add them as a friend
+    markOnline(player.id);
     // Restore a previously-worn hat the player still owns.
     if (options?.hat && ownsItem(this.db, player.id, options.hat) && getShopItem(options.hat)?.kind === "hat") {
       ghost.hat = options.hat;
@@ -153,8 +204,11 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     this.state.ghosts.delete(client.sessionId);
     this.targets.delete(client.sessionId);
     this.chat.delete(client.sessionId);
+    const playerId = this.playerIds.get(client.sessionId);
+    if (playerId !== undefined) markOffline(playerId);
     this.playerIds.delete(client.sessionId);
     this.rounds.delete(client.sessionId);
+    this.seances.delete(client.sessionId); // leaving forfeits an unfinished séance
   }
 
   /** Send the player their coins, owned items and recovery code. */
@@ -218,6 +272,50 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
       kind: decision.verdict === "block" ? "block" : "nudge",
       text: decision.reason ?? "Let us keep the town kind, dear.",
     });
+  }
+
+  // --- Séance (single-player Simon; server owns the sequence and the coins) ---
+
+  private readonly seances = new Map<string, { sequence: number[]; token: number }>();
+  private seanceToken = 0;
+
+  private handleSeanceStart(client: Client) {
+    const ghost = this.state.ghosts.get(client.sessionId);
+    if (!ghost || this.seances.has(client.sessionId)) return;
+    // You have to be at the candle circle, as with fishing at the fountain.
+    if (Math.hypot(ghost.x - SEANCE_SPOT.x, ghost.y - SEANCE_SPOT.y) > SEANCE_RANGE + 40) return;
+    this.showSeance(client, extendSequence([], this.random));
+  }
+
+  /** Send the next sequence and arm its deadline; a stale deadline is ignored via the token. */
+  private showSeance(client: Client, sequence: number[]) {
+    const token = ++this.seanceToken;
+    this.seances.set(client.sessionId, { sequence, token });
+    client.send(SEANCE_EVENT.show, { round: sequence.length, sequence } satisfies SeanceShow);
+    this.clock.setTimeout(() => {
+      if (this.seances.get(client.sessionId)?.token === token) this.endSeance(client, "timeout");
+    }, seanceDeadlineMs(sequence.length));
+  }
+
+  private handleSeanceAnswer(client: Client, payload: unknown) {
+    const seance = this.seances.get(client.sessionId);
+    const answer = parseSeanceAnswer(payload);
+    if (!seance || !answer) return;
+    if (!sequenceMatches(seance.sequence, answer)) return this.endSeance(client, "wrong");
+    if (seance.sequence.length >= SEANCE_MAX_ROUNDS) return this.endSeance(client, "complete");
+    this.showSeance(client, extendSequence(seance.sequence, this.random));
+  }
+
+  private endSeance(client: Client, reason: SeanceEndReason) {
+    const seance = this.seances.get(client.sessionId);
+    const playerId = this.playerIds.get(client.sessionId);
+    if (!seance || playerId === undefined) return;
+    this.seances.delete(client.sessionId); // delete first: a second end is a no-op
+    // The current sequence was only cleared if the séance was completed.
+    const roundsCleared = reason === "complete" ? seance.sequence.length : seance.sequence.length - 1;
+    const coins = seanceReward(roundsCleared);
+    const balance = (coins > 0 ? addCoins(this.db, playerId, coins) : null) ?? getPlayer(this.db, playerId)?.coins ?? 0;
+    client.send(SEANCE_EVENT.result, { roundsCleared, coins, balance, reason } satisfies SeanceResult);
   }
 
   // --- Ghost Fishing (single-player, request/response, not synced state) ---
