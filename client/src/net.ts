@@ -8,6 +8,8 @@ import {
   FRIENDS_EVENT,
   type FriendTarget,
   type FriendsList,
+  AREAS,
+  type AreaId,
   SEANCE,
   SEANCE_EVENT,
   type SeanceResult,
@@ -42,6 +44,8 @@ export interface GhostView {
   bubble: string;
   bubbleUntil: number;
   hat: string;
+  /** Pet shop item id, or "". Optional: older servers don't sync it. */
+  pet?: string;
   ownerId: string;
 }
 
@@ -99,9 +103,19 @@ export function joinOptionsWithIdentity(options: JoinOptions): JoinOptions {
 }
 
 export async function joinPlaza(options: JoinOptions): Promise<PlazaRoom> {
+  return joinArea("plaza", options);
+}
+
+/** Join a public area (plaza, lighthouse, crypt). They all share the plaza's room code. */
+export async function joinArea(area: AreaId, options: JoinOptions): Promise<PlazaRoom> {
   const client = new Client(serverUrl());
-  const room = await client.joinOrCreate<PlazaView>(PLAZA_ROOM, joinOptionsWithIdentity(options));
+  const room = await client.joinOrCreate<PlazaView>(AREAS[area].room ?? PLAZA_ROOM, joinOptionsWithIdentity(options));
   return room as PlazaRoom;
+}
+
+/** Bring an owned pet along (shop item id), or "" to leave it at home. */
+export function sendSetPet(room: PlazaRoom, pet: string): void {
+  room.send(ROOM.setPet, { pet });
 }
 
 /** Visit a haunted room by its owner's player id. */

@@ -1,18 +1,35 @@
 import Phaser from "phaser";
-import { MESSAGE, OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
+import { AREAS, MESSAGE, OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget, type AreaId } from "@club-kiro/shared";
 import {
+  AREA_LIGHTS,
   LANTERNS,
+  LIGHTHOUSE_LAMP,
   SEANCE_CANDLES,
+  areaSvg,
+  petTextures,
+  plazaSignsSvg,
   caretakerSvg,
   ghostTextureKey,
   ghostTextures,
   hatTextureKey,
   hatTextures,
-  plazaSvg,
   svgUrl,
   vignetteSvg,
 } from "../art";
-import { Bubble, coverCamera, face, followMe, glowTexture, groundShadow, heldDirection, moveKeys, nameTag, type MoveKeys } from "../ghostParts";
+import {
+  Bubble,
+  coverCamera,
+  face,
+  followMe,
+  glowTexture,
+  groundShadow,
+  heldDirection,
+  moveKeys,
+  nameTag,
+  syncPet,
+  type MoveKeys,
+  type Pet,
+} from "../ghostParts";
 import { GHOST_HEAD_OFFSET_X } from "../art";
 import { sendMove, type GhostView, type PlazaRoom } from "../net";
 import { reduceMotion } from "../settings";
@@ -45,6 +62,7 @@ interface GhostSprite {
   bubble: Bubble;
   shownBubble: string;
   facing: number;
+  pet?: Pet;
 }
 
 export class PlazaScene extends Phaser.Scene {
@@ -70,28 +88,43 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   private onTalk?: () => void;
+  /** Which public area this scene shows. The plaza has the Caretaker, fountain and séance. */
+  private area: AreaId = "plaza";
+  private get isPlaza() {
+    return this.area === "plaza";
+  }
 
-  init(data: { room: PlazaRoom; onVisit?: (ownerPlayerId: number, name: string) => void; onTalk?: () => void }) {
+  init(data: { room: PlazaRoom; area?: AreaId; onVisit?: (ownerPlayerId: number, name: string) => void; onTalk?: () => void }) {
     this.room = data.room;
+    this.area = data.area ?? "plaza";
     this.onVisit = data.onVisit;
     this.onTalk = data.onTalk;
   }
 
   preload() {
-    this.load.svg("plaza", svgUrl(plazaSvg()), { width: PLAZA_WIDTH, height: PLAZA_HEIGHT });
-    this.load.svg("vignette", svgUrl(vignetteSvg()), { width: PLAZA_WIDTH, height: PLAZA_HEIGHT });
+    const size = { width: PLAZA_WIDTH, height: PLAZA_HEIGHT };
+    this.load.svg(`bg-${this.area}`, svgUrl(areaSvg(this.area)), size);
+    if (this.isPlaza) this.load.svg("plaza-signs", svgUrl(plazaSignsSvg()), size);
+    this.load.svg("vignette", svgUrl(vignetteSvg()), size);
     this.load.svg("caretaker", svgUrl(caretakerSvg()), { width: 104, height: 112 });
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
+    for (const t of petTextures) this.load.svg(t.key, t.url);
   }
 
   create() {
     // Drawn 2px oversize so linear filtering never bleeds a light line along the edges.
-    this.add.image(-1, -1, "plaza").setOrigin(0, 0).setDisplaySize(PLAZA_WIDTH + 2, PLAZA_HEIGHT + 2);
-    this.addLanternGlows();
+    const full = (key: string) => this.add.image(-1, -1, key).setOrigin(0, 0).setDisplaySize(PLAZA_WIDTH + 2, PLAZA_HEIGHT + 2);
+    full(`bg-${this.area}`);
+    if (this.isPlaza) {
+      full("plaza-signs");
+      this.addLanternGlows();
+    } else {
+      this.addAreaLights();
+    }
     this.addAmbience();
-    this.addCaretaker();
-    this.add.image(-1, -1, "vignette").setOrigin(0, 0).setDisplaySize(PLAZA_WIDTH + 2, PLAZA_HEIGHT + 2).setDepth(150000);
+    if (this.isPlaza) this.addCaretaker();
+    full("vignette").setDepth(150000);
     this.addHauntingOverlay();
 
     // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input),
@@ -156,7 +189,7 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   private driftCaretaker(dt: number) {
-    if (this.reducedMotion || this.caretakerTalking) return;
+    if (!this.isPlaza || this.reducedMotion || this.caretakerTalking) return;
     this.caretakerAngle += dt * 0.045;
     this.placeCaretaker();
     // Moving round the loop, x changes as -sin(angle): face that way.
@@ -165,12 +198,37 @@ export class PlazaScene extends Phaser.Scene {
 
   /** Show a line in the Caretaker's speech bubble for a few seconds. */
   caretakerSay(text: string) {
+    if (!this.isPlaza) return; // the Caretaker keeps to the town square
     this.caretakerBubble.set(text);
     this.bubbleTimer?.remove();
     this.bubbleTimer = this.time.delayedCall(bubbleMs(text), () => this.caretakerBubble.set(""));
   }
 
   // --- Ambience ---
+
+  /** Lights for the lighthouse and crypt, plus the lighthouse's turning beam. */
+  private addAreaLights() {
+    if (this.isPlaza) return;
+    const key = glowTexture(this);
+    for (const l of AREA_LIGHTS[this.area as Exclude<AreaId, "plaza">]) {
+      const glow = this.add.image(l.x, l.y, key).setTint(l.tint).setAlpha(0.3).setScale(l.scale).setBlendMode(Phaser.BlendModes.ADD);
+      if (!this.reducedMotion) {
+        this.tweens.add({ targets: glow, alpha: { from: 0.24, to: 0.34 }, duration: 1600 + Math.random() * 1600, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      }
+    }
+    if (this.area === "lighthouse") {
+      // A soft wedge of light (stacked faint layers, so no hard edge) that sweeps
+      // from out over the sea on the left, up through the sky, to the right. It never
+      // points down at the clifftop. Rotation 0 points left; positive turns it upward.
+      const beam = this.add.graphics({ x: LIGHTHOUSE_LAMP.x, y: LIGHTHOUSE_LAMP.y }).setBlendMode(Phaser.BlendModes.ADD).setDepth(140000);
+      for (let i = 1; i <= 5; i++) {
+        const spread = 14 * i;
+        beam.fillStyle(0xfff1c2, 0.022).fillTriangle(0, -2, -900, -spread, -900, spread);
+      }
+      if (this.reducedMotion) beam.setRotation(0.05);
+      else this.tweens.add({ targets: beam, rotation: { from: 0.02, to: Math.PI - 0.02 }, duration: 9000, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
+  }
 
   private addLanternGlows() {
     const key = glowTexture(this);
@@ -246,9 +304,9 @@ export class PlazaScene extends Phaser.Scene {
       .rectangle(0, 0, PLAZA_WIDTH, PLAZA_HEIGHT, 0x0a0620, 0)
       .setOrigin(0, 0)
       .setDepth(200000);
-    // Extra lantern glow that only appears during a haunting.
+    // Extra lantern glow that only appears during a haunting (the plaza's lamps).
     const key = glowTexture(this);
-    for (const l of LANTERNS) {
+    for (const l of this.isPlaza ? LANTERNS : []) {
       this.hauntingGlows.push(
         this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0).setScale(1).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
       );
@@ -283,6 +341,8 @@ export class PlazaScene extends Phaser.Scene {
       c.setDepth(c.y); // ghosts lower on screen draw in front
       this.updateBubble(sprite, ghost.bubble);
       this.updateHat(sprite, ghost.hat);
+      sprite.pet = syncPet(this, sprite.pet, ghost.pet ?? "", c.x, c.y, this.reducedMotion);
+      sprite.pet?.update(dt, c.x, c.y, sprite.facing, c.y - 1);
       if (!this.greeted && id === this.room.sessionId) {
         this.greeted = true;
         this.caretakerSay(`Welcome to the town, ${ghost.name}. Make yourself at home.`);
@@ -291,6 +351,7 @@ export class PlazaScene extends Phaser.Scene {
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
       this.sprites.delete(id);
+      sprite.pet?.destroy();
       // Leave effect: dissolve — fade out while drifting up and shrinking.
       if (this.reducedMotion) {
         sprite.container.destroy();
@@ -372,7 +433,7 @@ export class PlazaScene extends Phaser.Scene {
 
     if (dx !== 0 || dy !== 0) {
       if (time - this.lastKeySend >= KEY_SEND_MS) {
-        sendMove(this.room, keysToTarget({ x: me.x, y: me.y }, dx, dy));
+        sendMove(this.room, keysToTarget({ x: me.x, y: me.y }, dx, dy, AREAS[this.area].walk.top));
         this.lastKeySend = time;
       }
       this.wasKeyMoving = true;

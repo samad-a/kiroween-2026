@@ -12,8 +12,8 @@ import {
   svgUrl,
   vignetteSvg,
 } from "../art";
-import { face, glowTexture, groundShadow, heldDirection, moveKeys, nameTag, type MoveKeys } from "../ghostParts";
-import { GHOST_HEAD_OFFSET_X } from "../art";
+import { face, glowTexture, groundShadow, heldDirection, moveKeys, nameTag, syncPet, type MoveKeys, type Pet } from "../ghostParts";
+import { GHOST_HEAD_OFFSET_X, petTextures } from "../art";
 import { moveItem, placeItem, removeItem, type GhostView, type HauntedRoomClient, type RoomItemView } from "../net";
 import { coverCamera, followMe } from "../ghostParts";
 
@@ -32,6 +32,7 @@ interface GhostSprite {
   hat: Phaser.GameObjects.Image;
   shownHat: string;
   facing: number;
+  pet?: Pet;
 }
 
 /** A personal haunted room. The owner can drag decorations; visitors just walk. */
@@ -60,6 +61,7 @@ export class RoomScene extends Phaser.Scene {
     for (const t of ghostTextures) this.load.svg(t.key, t.url, { width: 64, height: 72 });
     for (const t of hatTextures) this.load.svg(t.key, t.url, { width: 48, height: 44 });
     for (const t of decorTextures) this.load.svg(t.key, t.url, { width: 120, height: 96 });
+    for (const t of petTextures) this.load.svg(t.key, t.url);
   }
 
   create() {
@@ -138,10 +140,13 @@ export class RoomScene extends Phaser.Scene {
       c.y += (ghost.y - c.y) * k;
       c.setDepth(1000 + c.y);
       this.updateHat(sprite, ghost.hat);
+      sprite.pet = syncPet(this, sprite.pet, ghost.pet ?? "", c.x, c.y, this.reducedMotion);
+      sprite.pet?.update(dt, c.x, c.y, sprite.facing, 1000 + c.y - 1);
     });
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
       this.sprites.delete(id);
+      sprite.pet?.destroy();
       sprite.container.destroy();
     }
   }

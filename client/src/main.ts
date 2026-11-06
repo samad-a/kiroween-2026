@@ -22,6 +22,8 @@ import {
   onFishStarted,
   onWallet,
   saveRecoveryCode,
+  joinArea,
+  sendSetPet,
   joinHauntedRoom,
   addFriend,
   removeFriend,
@@ -42,6 +44,10 @@ import {
   type PlazaRoom,
 } from "./net";
 import {
+  AREAS,
+  exitAt,
+  type AreaId,
+  type JoinOptions,
   RUNES,
   SEANCE_RANGE,
   SEANCE_SPOT,
@@ -67,6 +73,8 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 const owned = new Set<string>();
 let wornHat = ""; // the shop item id of the currently-worn hat, or ""
+let wornPet = ""; // the pet that follows you, or ""
+let currentArea: AreaId = "plaza";
 let identity: { name: string; colour: number } = { name: "", colour: 0 };
 /** The plaza room while in the plaza; undefined while visiting a haunted room. */
 let plazaRoom: PlazaRoom | undefined;
@@ -211,13 +219,13 @@ form.addEventListener("submit", async (event) => {
   status.textContent = "Drifting into the plaza…";
   try {
     identity = { name, colour };
-    const room = await joinPlaza(identity);
+    const room = await joinArea("plaza", joinOptions());
     $("join").hidden = true;
     $("help").hidden = false;
     window.setTimeout(() => $("help").classList.add("gone"), 10_000);
     $("hud").hidden = false;
     wireUi();
-    enterPlaza(room);
+    enterArea(room, "plaza");
     startMusic(); // after the join gesture, honouring the mute preference
   } catch (error) {
     console.error(error);
@@ -247,18 +255,27 @@ function focusCanvas() {
   canvas.focus();
 }
 
-/** Show the plaza world and bind this room's server messages. */
-function enterPlaza(room: PlazaRoom) {
+/** Join options with identity plus the hat and pet you have with you. */
+function joinOptions(from?: AreaId): JoinOptions {
+  return { ...identity, hat: wornHat || undefined, pet: wornPet || undefined, from };
+}
+
+/** Show a public area (plaza, lighthouse or crypt) and bind its room's server messages. */
+function enterArea(room: PlazaRoom, area: AreaId) {
   plazaRoom = room;
+  currentArea = area;
   // Message handlers go on synchronously after join, so the join-time wallet is not missed.
   bindPlazaMessages(room);
-  if (wornHat) sendSetHat(room, wornHat);
-  newGame().scene.add("plaza", PlazaScene, true, { room, onVisit: offerVisit, onTalk: talkToCaretaker });
+  newGame().scene.add("plaza", PlazaScene, true, { room, area, onVisit: offerVisit, onTalk: talkToCaretaker });
   focusCanvas();
-  $("fishing").hidden = false;
-  $("seance").hidden = false;
+  const plaza = area === "plaza";
+  // The mini-games live in the town square; chat works everywhere public.
+  $("fishing").hidden = !plaza;
+  $("seance").hidden = !plaza;
   $("chat").hidden = false;
-  $("room-controls").hidden = true;
+  // Away from the square, the top-left bar names the place and offers the way back.
+  $("room-controls").hidden = plaza;
+  $("room-owner").textContent = AREAS[area].name;
   $("room-button").hidden = false;
   editorButton.hidden = true;
 }
@@ -445,7 +462,7 @@ async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
     const leaving = plazaRoom;
     plazaRoom = undefined;
     await leaving?.leave();
-    roomClient = await joinHauntedRoom(identity, ownerPlayerId);
+    roomClient = await joinHauntedRoom(joinOptions(), ownerPlayerId);
     newGame().scene.add("room", RoomScene, true, { room: roomClient, isOwner });
     focusCanvas();
     // Chat and the mini-games live in the plaza only.
@@ -476,10 +493,38 @@ async function returnToPlaza(force = false) {
   }
   roomClient = undefined;
   try {
-    enterPlaza(await joinPlaza(identity));
+    enterArea(await joinArea("plaza", joinOptions()), "plaza");
   } catch (err) {
     console.error(err);
     showToast("The plaza gates are stuck. Reload the page to try again.");
+  } finally {
+    switching = false;
+  }
+}
+
+/** Walk from one public area to another (plaza, lighthouse, crypt). */
+async function travel(to: AreaId) {
+  if (switching || to === currentArea || !plazaRoom) return;
+  switching = true;
+  const from = currentArea;
+  fishing.stop();
+  seance.stop();
+  endTalk();
+  modals.shop.close();
+  try {
+    const leaving = plazaRoom;
+    plazaRoom = undefined;
+    await leaving.leave();
+    // `from` puts us at the matching exit on the other side.
+    enterArea(await joinArea(to, joinOptions(from)), to);
+  } catch (err) {
+    console.error(err);
+    showToast("The path is blocked. Back to the town square.");
+    try {
+      enterArea(await joinArea("plaza", joinOptions()), "plaza");
+    } catch {
+      showToast("The town gates are stuck. Reload the page to try again.");
+    }
   } finally {
     switching = false;
   }
@@ -511,13 +556,24 @@ function renderShop() {
   for (const item of SHOP_ITEMS) {
     if (item.kind !== lastKind) {
       lastKind = item.kind;
-      list.append(sectionTitle(item.kind === "hat" ? "Hats" : "Room decorations"));
+      list.append(sectionTitle({ hat: "Hats", decoration: "Room decorations", pet: "Pets" }[item.kind]));
     }
     const has = owned.has(item.id);
     const li = itemCard(item, !has);
     if (has) li.classList.add("owned");
-    if (wornHat === item.id) li.classList.add("wearing");
-    if (has && item.kind === "hat") {
+    if (wornHat === item.id || wornPet === item.id) li.classList.add("wearing");
+    if (has && item.kind === "pet") {
+      // One pet at a time; bringing another sends the first one home.
+      const along = wornPet === item.id;
+      li.append(
+        button(along ? "Send home" : "Bring along", () => {
+          if (!plazaRoom) return;
+          wornPet = along ? "" : item.id;
+          sendSetPet(plazaRoom, wornPet);
+          renderShop();
+        }, along ? "secondary" : ""),
+      );
+    } else if (has && item.kind === "hat") {
       const wearing = wornHat === item.id;
       li.append(
         button(wearing ? "Take off" : "Wear", () => {
@@ -596,7 +652,20 @@ function wireUi() {
     const id = myPlayerId();
     if (id !== null) void visitRoom(id, true);
   });
-  $("return-plaza").addEventListener("click", () => void returnToPlaza());
+  // "Plaza" leaves a haunted room, or walks home from the lighthouse or crypt.
+  $("return-plaza").addEventListener("click", () => void (roomClient ? returnToPlaza() : travel("plaza")));
+
+  // Standing at an exit offers the way through.
+  const exitPrompt = $<HTMLButtonElement>("exit-prompt");
+  let exitTo: AreaId | null = null;
+  exitPrompt.addEventListener("click", () => exitTo && void travel(exitTo));
+  window.setInterval(() => {
+    const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+    const exit = me && !switching ? exitAt(currentArea, me) : undefined;
+    exitTo = exit?.to ?? null;
+    exitPrompt.hidden = !exit;
+    if (exit) exitPrompt.textContent = `Go to ${exit.label}`;
+  }, 300);
   $("visit-cancel").addEventListener("click", () => modals.visit.close());
   $("visit-go").addEventListener("click", () => {
     const target = pendingVisit;

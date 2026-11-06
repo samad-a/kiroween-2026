@@ -1,5 +1,6 @@
 import Phaser from "phaser";
-import { GHOST_HEAD_OFFSET_X } from "./art";
+import { parsePetId } from "@club-kiro/shared";
+import { GHOST_HEAD_OFFSET_X, petTextureKey } from "./art";
 import { isTyping } from "./settings";
 
 // Shared drawing and input helpers for ghosts in the plaza and in rooms.
@@ -139,4 +140,76 @@ export class Bubble {
     this.bg.fillTriangle(-7, -tail - 1, 7, -tail - 1, 0, 0);
     this.container.setVisible(true);
   }
+}
+
+/**
+ * A pet that trails its ghost. It lives outside the ghost's container so it can
+ * lag behind and catch up, which reads as following rather than being glued on.
+ * Each species moves its own way: bats flap, wisps bob and glow, spiders dangle.
+ */
+export class Pet {
+  private readonly img: Phaser.GameObjects.Image;
+  private readonly glow?: Phaser.GameObjects.Image;
+  private readonly thread?: Phaser.GameObjects.Graphics;
+  private t = Math.random() * 10;
+
+  constructor(
+    private readonly scene: Phaser.Scene,
+    readonly itemId: string,
+    textureKey: string,
+    x: number,
+    y: number,
+    private readonly reducedMotion: boolean,
+  ) {
+    this.species = parsePetId(itemId)?.species ?? "wisp";
+    if (this.species === "wisp") {
+      this.glow = scene.add.image(x, y, glowTexture(scene)).setTint(0xffffff).setAlpha(0.18).setScale(0.3).setBlendMode(Phaser.BlendModes.ADD);
+    }
+    if (this.species === "spider") this.thread = scene.add.graphics();
+    this.img = scene.add.image(x, y, textureKey);
+  }
+
+  private readonly species: string;
+
+  /** Follow a point beside the ghost's back, a little above it. */
+  update(dt: number, ghostX: number, ghostY: number, facing: number, depth: number) {
+    this.t += dt;
+    const restX = ghostX - facing * 38;
+    const restY = ghostY - (this.species === "spider" ? 4 : 30);
+    const k = Math.min(1, dt * 4); // slower than the ghost, so it trails
+    this.img.x += (restX - this.img.x) * k;
+    this.img.y += (restY - this.img.y) * k;
+    this.img.setFlipX(facing < 0);
+
+    const still = this.reducedMotion;
+    let bob = 0;
+    if (this.species === "bat") {
+      bob = still ? 0 : Math.sin(this.t * 3) * 6;
+      this.img.setScale(1, still ? 1 : 0.7 + Math.abs(Math.sin(this.t * 14)) * 0.3); // wing beats
+    } else if (this.species === "wisp") {
+      bob = still ? 0 : Math.sin(this.t * 2) * 5;
+      this.glow?.setPosition(this.img.x, this.img.y + bob).setAlpha(still ? 0.18 : 0.14 + Math.sin(this.t * 3) * 0.05).setDepth(depth - 1);
+    } else {
+      bob = still ? 0 : Math.sin(this.t * 1.6) * 8;
+    }
+    this.img.setDisplayOrigin(this.img.width / 2, this.img.height / 2 - bob).setDepth(depth);
+    if (this.thread) {
+      // The spider hangs on a silk thread from above.
+      this.thread.clear().lineStyle(1, 0xe6dcff, 0.5).lineBetween(this.img.x, this.img.y - 70, this.img.x, this.img.y + bob - 8);
+      this.thread.setDepth(depth - 1);
+    }
+  }
+
+  destroy() {
+    this.img.destroy();
+    this.glow?.destroy();
+    this.thread?.destroy();
+  }
+}
+
+/** Keep a ghost's pet in line with its synced `pet` field: create, swap or remove. */
+export function syncPet(scene: Phaser.Scene, current: Pet | undefined, petId: string, x: number, y: number, reducedMotion: boolean): Pet | undefined {
+  if ((current?.itemId ?? "") === petId) return current;
+  current?.destroy();
+  return petId ? new Pet(scene, petId, petTextureKey(petId), x, y, reducedMotion) : undefined;
 }
