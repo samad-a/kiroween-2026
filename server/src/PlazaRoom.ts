@@ -51,6 +51,7 @@ import {
   SEANCE_MAX_ROUNDS,
   SEANCE_RANGE,
   SEANCE_SPOT,
+  PET_STORE,
   extendSequence,
   parseSeanceAnswer,
   seanceDeadlineMs,
@@ -463,6 +464,12 @@ export class PlazaRoom extends Room<{ state: PlazaState }> {
     const buy = parseBuy(payload);
     if (!buy) return;
     const item = getShopItem(buy.itemId)!; // parseBuy only passes known ids
+    // Pets are sold only at the Pet Store door.
+    if (item.kind === "pet") {
+      const g = this.state.ghosts.get(client.sessionId);
+      const d = PET_STORE.door;
+      if (this.area !== "plaza" || !g || Math.hypot(g.x - d.x, g.y - d.y) > PET_STORE.radius + 40) return;
+    }
 
     const balance = buyItem(this.db, playerId, item.id, item.price);
     if (balance === null) {

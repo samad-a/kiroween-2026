@@ -104,6 +104,7 @@
       <!-- Bottom dock: everything here stacks upward, so nothing overlaps. -->
       <div id="dock">
         <button type="button" id="exit-prompt" class="fish-prompt" hidden>Go</button>
+        <button type="button" id="pet-prompt" class="fish-prompt" hidden>Enter the Pet Store</button>
         <p id="help" class="hint surface" hidden>
           Click to float · <kbd>WASD</kbd> to move · Click a ghost or the Caretaker to talk
         </p>
@@ -218,6 +219,16 @@
         </div>
         <p class="sub">Hats for your ghost, decorations for your room. Earn coins fishing at the fountain.</p>
         <div class="scroll"><ul id="shop-list" class="shop-grid"></ul></div>
+      </section>
+
+      <!-- Pet Store: opened at its door in the plaza -->
+      <section id="pet-store" class="dialog modal surface" hidden aria-labelledby="pet-store-title">
+        <div class="dialog-head">
+          <h2 id="pet-store-title">Pet Store</h2>
+          <button type="button" id="pet-store-close" class="ghost-btn icon-btn" aria-label="Close pet store">✕</button>
+        </div>
+        <p class="sub">A little companion to float along beside you. One at a time.</p>
+        <div class="scroll"><ul id="pet-list" class="shop-grid"></ul></div>
       </section>
 
       <!-- Recovery code dialog -->

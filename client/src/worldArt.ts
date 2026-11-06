@@ -11,6 +11,7 @@ import {
   LAMPS,
   PET_COLOURS,
   PET_ITEMS,
+  PET_STORE,
   PLAZA_HEIGHT,
   PLAZA_WIDTH,
   SEANCE_SPOT,
@@ -277,7 +278,7 @@ function plazaProps(): PropSprite[] {
   const fx = f.x + f.width / 2;
   const fy = f.y + f.height / 2;
   const trees: [number, number, number][] = [[40, 690, 1.1], [1170, 300, 0.9], [1160, 700, 1]];
-  const stones: [number, number, number][] = [[98, 690, 1], [140, 700, 0.75], [880, 228, 0.7], [1100, 690, 0.8]];
+  const stones: [number, number, number][] = [[98, 690, 1], [140, 700, 0.75], [1100, 690, 0.8]];
   const pumpkins: [number, number][] = [[fx - 128, fy + 100], [fx + 132, fy + 96], [330, 650]];
   return [
     prop("p-tower", towerArt(), 912, -24, 156, 326, tower.y + tower.height - 4),
@@ -287,7 +288,26 @@ function plazaProps(): PropSprite[] {
     ...stones.map(([x, y, s], i) => prop(`p-stone-${i}`, tombstone(x, y, s), x - 22 * s, y - 42 * s, 44 * s, 50 * s, y)),
     ...pumpkins.map(([x, y], i) => prop(`p-pumpkin-${i}`, pumpkin(x, y), x - 22, y - 20, 44, 38, y + 10)),
     dashGateProp(),
+    prop("p-pet-store", petStoreArt(), PET_STORE.x - 84, PET_STORE.ground - 160, 168, 172, PET_STORE.ground),
   ];
+}
+
+/** The Pet Store: a crooked little shop with a lit window and a bat on the sign. */
+function petStoreArt(): string {
+  const x = PET_STORE.x;
+  const g = PET_STORE.ground;
+  return `<ellipse cx="${x}" cy="${g + 2}" rx="80" ry="10" fill="${C.shadow}"/>
+  <rect x="${x - 64}" y="${g - 100}" width="128" height="100" rx="6" fill="#3b2f6a"/>
+  <rect x="${x}" y="${g - 100}" width="64" height="100" rx="6" fill="#33285c"/>
+  <path d="M${x - 78} ${g - 96} L${x - 4} ${g - 156} L${x + 78} ${g - 96} Z" fill="#1d1738"/>
+  <rect x="${x - 50}" y="${g - 92}" width="100" height="22" rx="6" fill="#7fe0c8"/>
+  <text x="${x}" y="${g - 76}" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="800" font-size="13" fill="#1d1733">PET STORE</text>
+  <rect x="${x - 54}" y="${g - 62}" width="34" height="30" rx="5" fill="${C.window}" opacity="0.9"/>
+  <path d="M${x - 37} ${g - 48} q-8 -6 -12 2 q6 -2 12 4 q6 -6 12 -4 q-4 -8 -12 -2 Z" fill="#1d1733"/>
+  <rect x="${x + 20}" y="${g - 62}" width="34" height="30" rx="5" fill="${C.window}" opacity="0.9"/>
+  <circle cx="${x + 37}" cy="${g - 46}" r="6" fill="#b080ff" opacity="0.9"/>
+  <path d="M${x - 15} ${g} L${x - 15} ${g - 40} Q${x} ${g - 54} ${x + 15} ${g - 40} L${x + 15} ${g} Z" fill="#15102b"/>
+  <circle cx="${x + 9}" cy="${g - 20}" r="2" fill="#ffd98a"/>`;
 }
 
 /** Candle positions around the séance circle, also used for their glows. */

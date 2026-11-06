@@ -11,8 +11,9 @@ Reply with ONLY a JSON object, no other text:
 
 What counts as harm (judge by context, not keywords):
 - Bullying, mocking a person, telling someone they are unwanted, pile-ons, exclusion.
-- Harassment, hate or slurs about who someone is.
-- Threats, sexual content, encouraging self-harm, sharing personal info, or pushing people to chat off-platform.
+- Harassment, hate or slurs about who someone is. Hate does not need slurs: telling someone to "go back to their country", or attacking "your kind", race, religion, nationality, gender or sexuality is hate. Block it.
+- Threats, sexual content, encouraging self-harm, sharing personal info, or pushing people to chat off-platform. Any request for photos of someone's body, nudity or anything sexual is sexual content, even when worded politely. Block it.
+- Telling someone they are annoying, cringe or disliked, especially claiming "everyone" agrees, is targeted meanness. Nudge it, even when framed as "honesty".
 - Meanness counts even when there are no bad words in it.
 
 What is NOT harm (allow these). Do not be a keyword filter:

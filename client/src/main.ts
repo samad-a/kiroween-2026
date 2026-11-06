@@ -60,6 +60,8 @@ import {
   type DashQueue,
   type DashResults,
   FOUNTAIN_CENTRE,
+  PET_STORE,
+  type ShopItem,
   exitAt,
   type AreaId,
   type JoinOptions,
@@ -529,6 +531,7 @@ async function travel(to: AreaId) {
   seance.stop();
   endTalk();
   modals.shop.close();
+  modals.petStore.close();
   try {
     const leaving = plazaRoom;
     plazaRoom = undefined;
@@ -559,6 +562,7 @@ editorButton.setAttribute("aria-label", "Decorate");
 
 const modals = {
   shop: makeModal($("shop")),
+  petStore: makeModal($("pet-store")),
   recovery: makeModal($("recovery")),
   settings: makeModal($("settings")),
   visit: makeModal($("visit-prompt"), () => (pendingVisit = null)),
@@ -567,12 +571,18 @@ const modals = {
   dashResults: makeModal($("dash-results"), () => void (dashRoom && leaveDash())),
 };
 const toggle = (m: (typeof modals)[keyof typeof modals]) => (m.isOpen ? m.close() : m.open());
+const anyModalOpen = () => Object.values(modals).some((m) => m.isOpen);
 
+/** Redraw both catalogues: hats and decorations in the shop, pets in the Pet Store. */
 function renderShop() {
-  const list = $<HTMLUListElement>("shop-list");
+  renderCatalogue($<HTMLUListElement>("shop-list"), SHOP_ITEMS.filter((i) => i.kind !== "pet"));
+  renderCatalogue($<HTMLUListElement>("pet-list"), SHOP_ITEMS.filter((i) => i.kind === "pet"));
+}
+
+function renderCatalogue(list: HTMLUListElement, items: readonly ShopItem[]) {
   list.replaceChildren();
   let lastKind = "";
-  for (const item of SHOP_ITEMS) {
+  for (const item of items) {
     if (item.kind !== lastKind) {
       lastKind = item.kind;
       list.append(sectionTitle({ hat: "Hats", decoration: "Room decorations", pet: "Pets" }[item.kind]));
@@ -684,7 +694,46 @@ function wireUi() {
     exitTo = exit?.to ?? null;
     exitPrompt.hidden = !exit;
     if (exit) exitPrompt.textContent = `Go to ${exit.label}`;
+    // The Pet Store door, in the plaza only. Walking away closes it.
+    const d = PET_STORE.door;
+    const atStore = !!me && currentArea === "plaza" && !roomClient && Math.hypot(me.x - d.x, me.y - d.y) <= PET_STORE.radius;
+    petPrompt.hidden = !atStore || modals.petStore.isOpen;
+    if (!atStore && modals.petStore.isOpen) modals.petStore.close();
   }, 300);
+
+  const petPrompt = $<HTMLButtonElement>("pet-prompt");
+  petPrompt.addEventListener("click", () => {
+    renderShop();
+    modals.petStore.open();
+  });
+  $("pet-store-close").addEventListener("click", () => modals.petStore.close());
+
+  // Space uses whichever place prompt is showing (exit, Pet Store, fishing, séance).
+  // Fishing's own Space handler takes over once a round is running.
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || e.repeat || isTyping() || anyModalOpen()) return;
+    const prompt = [...document.querySelectorAll<HTMLButtonElement>("#dock .fish-prompt")].find((b) => b.offsetParent !== null);
+    if (!prompt) return;
+    e.preventDefault();
+    // Registered before fishing's handler: stop this same press also reeling the round it starts.
+    e.stopImmediatePropagation();
+    prompt.click();
+  });
+  // Phaser swallows canvas mousedown, so clicking the world never blurs the chat box on its own.
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.target instanceof HTMLCanvasElement && isTyping()) (document.activeElement as HTMLElement).blur();
+    },
+    true,
+  );
+  // Enter starts typing, the way most games do.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || isTyping() || anyModalOpen() || $("chat").hidden) return;
+    if (document.activeElement instanceof HTMLButtonElement) return; // let Enter press a focused button
+    e.preventDefault();
+    chatInput.focus();
+  });
   $("visit-cancel").addEventListener("click", () => modals.visit.close());
   $("visit-go").addEventListener("click", () => {
     const target = pendingVisit;
@@ -738,8 +787,11 @@ function wireUi() {
     event.preventDefault();
     const text = chatInput.value.trim();
     if (!text || !plazaRoom) return;
-    sendChat(plazaRoom, text);
+    if (text && plazaRoom) sendChat(plazaRoom, text);
     chatInput.value = "";
+    // Sending (or Enter on an empty box) hands the keyboard back to the game.
+    chatInput.blur();
+    focusCanvas();
   });
   chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {

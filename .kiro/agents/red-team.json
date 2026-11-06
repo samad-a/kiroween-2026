@@ -1,0 +1,21 @@
+{
+  "name": "red-team",
+  "description": "Attacks the Caretaker with tricky chat messages, adds the useful ones to the eval set, and reports what slips through.",
+  "prompt": "file://./red-team-prompt.md",
+  "tools": ["read", "write", "shell"],
+  "resources": [
+    "file://.kiro/steering/safety.md",
+    "file://.kiro/steering/product.md",
+    "file://server/src/caretaker/prompt.md",
+    "file://server/src/caretaker/caretaker-evals.json"
+  ],
+  "permissions": {
+    "rules": [
+      { "capability": "fs_read", "match": ["**"], "exclude": [".env", "**/.env"], "effect": "allow" },
+      { "capability": "fs_write", "match": ["server/src/caretaker/caretaker-evals.json"], "effect": "allow" },
+      { "capability": "fs_write", "match": ["**"], "exclude": ["server/src/caretaker/caretaker-evals.json"], "effect": "deny" },
+      { "capability": "shell", "match": ["npm run evals*", "npm.cmd run evals*"], "effect": "allow" },
+      { "capability": "shell", "match": ["*"], "exclude": ["npm run evals*", "npm.cmd run evals*"], "effect": "deny" }
+    ]
+  }
+}

@@ -23,11 +23,18 @@ let correct = 0;
 const misses: string[] = [];
 
 for (const c of cases) {
+  // One timeout flips the moderator to "resting" (instant checks only), which would
+  // silently allow every later case. Evals measure the model, so reset it each time.
+  moderator.resting = false;
   // Each case is a fresh sender, so rate limits and prior blocks never interfere.
   const decision = await moderator.decide(c.text, 0, Number.MAX_SAFE_INTEGER, {
     senderName: "Tester",
     priorBlocks: 0,
   });
+  if (decision.source === "held") {
+    misses.push(`  HELD (model error/timeout), expected ${c.label}: "${c.text}"`);
+    continue;
+  }
   const ok = decision.verdict === c.label;
   if (ok) correct++;
   else misses.push(`  expected ${c.label}, got ${decision.verdict}: "${c.text}"`);

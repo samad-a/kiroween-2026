@@ -51,9 +51,13 @@ export const LAMPS = [
 /** The fountain basin's footprint on the ground (feet space). */
 export const FOUNTAIN_FOOT: Rect = { x: 516, y: 334, width: 168, height: 76, shape: "ellipse" };
 
+/** The Pet Store at the back of the plaza: its building centre-x, its ground line, and the door zone. */
+export const PET_STORE = { x: 860, ground: 256, door: { x: 860, y: 290 }, radius: 60 } as const;
+
 /** Solid footprints in the plaza, in feet space. Rects are top-left anchored. */
 export const OBSTACLES: readonly Rect[] = [
   FOUNTAIN_FOOT,
+  { x: PET_STORE.x - 62, y: PET_STORE.ground - 22, width: 124, height: 22 }, // pet store front wall
   { x: 946, y: 262, width: 88, height: 26 }, // clock tower base
   ...LAMPS.map((l) => ({ x: l.x - 8, y: l.y + 82, width: 16, height: 10 })), // lamp-post bases
   { x: 32, y: 682, width: 18, height: 8 }, // tree trunks (match worldArt tree())
