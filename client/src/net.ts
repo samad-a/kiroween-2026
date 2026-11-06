@@ -4,6 +4,14 @@ import {
   DEFAULT_SERVER_PORT,
   FISH,
   FISH_EVENT,
+  FRIENDS,
+  FRIENDS_EVENT,
+  type FriendTarget,
+  type FriendsList,
+  SEANCE,
+  SEANCE_EVENT,
+  type SeanceResult,
+  type SeanceShow,
   HAUNTED_ROOM,
   MESSAGE,
   PLAZA_ROOM,
@@ -184,4 +192,37 @@ export function onBought(room: PlazaRoom, handler: (msg: ShopBought) => void): v
 
 export function onDenied(room: PlazaRoom, handler: (msg: ShopDenied) => void): void {
   room.onMessage(SHOP_EVENT.denied, handler);
+}
+
+// --- Friends ---
+
+export function addFriend(room: PlazaRoom, playerId: number): void {
+  room.send(FRIENDS.add, { playerId } satisfies FriendTarget);
+}
+export function removeFriend(room: PlazaRoom, playerId: number): void {
+  room.send(FRIENDS.remove, { playerId } satisfies FriendTarget);
+}
+export function requestFriends(room: PlazaRoom): void {
+  room.send(FRIENDS.list);
+}
+export function onFriends(room: PlazaRoom, handler: (list: FriendsList) => void): void {
+  room.onMessage(FRIENDS_EVENT.list, handler);
+}
+
+// --- Séance ---
+
+export function startSeance(room: PlazaRoom): void {
+  room.send(SEANCE.start);
+}
+export function answerSeance(room: PlazaRoom, answer: number[]): void {
+  room.send(SEANCE.answer, { answer });
+}
+export function endSeance(room: PlazaRoom): void {
+  room.send(SEANCE.end);
+}
+export function onSeanceShow(room: PlazaRoom, handler: (msg: SeanceShow) => void): void {
+  room.onMessage(SEANCE_EVENT.show, handler);
+}
+export function onSeanceResult(room: PlazaRoom, handler: (msg: SeanceResult) => void): void {
+  room.onMessage(SEANCE_EVENT.result, handler);
 }

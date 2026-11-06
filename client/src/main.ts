@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  CAST_COOLDOWN_MS,
   GHOST_COLOURS,
   OBSTACLES,
   PLAZA_HEIGHT,
@@ -22,8 +23,16 @@ import {
   onWallet,
   saveRecoveryCode,
   joinHauntedRoom,
+  addFriend,
+  removeFriend,
+  requestFriends,
+  onFriends,
+  startSeance,
+  answerSeance,
+  endSeance,
+  onSeanceShow,
+  onSeanceResult,
   placeItem,
-  removeItem,
   sendBuy,
   sendCast,
   sendChat,
@@ -32,18 +41,42 @@ import {
   type HauntedRoomClient,
   type PlazaRoom,
 } from "./net";
+import {
+  RUNES,
+  SEANCE_RANGE,
+  SEANCE_SPOT,
+  runeShowMs,
+  type FriendView,
+  type SeanceEndReason,
+  type SeanceResult,
+  type SeanceShow,
+} from "@club-kiro/shared";
 import { PlazaScene } from "./scenes/PlazaScene";
 import { RoomScene } from "./scenes/RoomScene";
-import { applyBodyClass, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
+import { applyBodyClass, isTyping, muted, setMuted, setReduceMotion, reduceMotion } from "./settings";
 import { makeModal } from "./modal";
 import { ghostSvg, itemPreviewUrl, svgUrl } from "./art";
 
 const COLOUR_NAMES = ["Moonlight", "Lavender", "Mint", "Pumpkin", "Rose", "Sky"];
-const COIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ffcf7a" stroke="#c98a2b" stroke-width="2"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#c98a2b" stroke-width="1.6"/></svg>`;
+const COIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ffb84d"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#b9741c" stroke-width="2"/></svg>`;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-/** A short, non-blocking message at the top of the screen. */
+
+// ---------- Session state ----------
+
+const owned = new Set<string>();
+let wornHat = ""; // the shop item id of the currently-worn hat, or ""
+let identity: { name: string; colour: number } = { name: "", colour: 0 };
+/** The plaza room while in the plaza; undefined while visiting a haunted room. */
+let plazaRoom: PlazaRoom | undefined;
+let roomClient: HauntedRoomClient | undefined;
+let currentGame: Phaser.Game | undefined;
+let coins = 0;
+let recoveryCode = "";
+
+// ---------- Small UI helpers ----------
+
 let toastTimer = 0;
 function showToast(text: string) {
   const toast = $<HTMLParagraphElement>("toast");
@@ -53,7 +86,20 @@ function showToast(text: string) {
   toastTimer = window.setTimeout(() => (toast.hidden = true), 3000);
 }
 
-/** A shop-style card: preview, name and price. The caller appends the action. */
+function setCoins(n: number) {
+  const went = n > coins;
+  coins = n;
+  $<HTMLSpanElement>("coin-count").textContent = String(n);
+  if (went) {
+    const pill = $("coins");
+    pill.classList.remove("bump");
+    void pill.offsetWidth; // restart the animation
+    pill.classList.add("bump");
+  }
+  if (!$("shop").hidden) renderShop();
+}
+
+/** A shop-style card: preview, name and (optionally) price. The caller appends the action. */
 function itemCard(item: (typeof SHOP_ITEMS)[number], showPrice: boolean): HTMLLIElement {
   const li = document.createElement("li");
   li.className = "card";
@@ -83,6 +129,18 @@ function sectionTitle(text: string): HTMLLIElement {
   li.textContent = text;
   return li;
 }
+
+function button(text: string, onClick: () => void, className = ""): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = text;
+  if (className) b.className = className;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+// ---------- Join screen ----------
+
 const form = $<HTMLFormElement>("join-form");
 const nameInput = $<HTMLInputElement>("name-input");
 const nameError = $<HTMLParagraphElement>("name-error");
@@ -113,6 +171,7 @@ const showJoinGhost = () => {
 };
 swatches.addEventListener("change", showJoinGhost);
 showJoinGhost();
+document.body.classList.add("ready");
 
 nameInput.value = randomName();
 $<HTMLButtonElement>("random-name").addEventListener("click", () => {
@@ -124,14 +183,11 @@ $<HTMLButtonElement>("random-name").addEventListener("click", () => {
 // Reflect the saved reduced-motion preference before anything renders.
 applyBodyClass();
 
-// "Restore with a recovery code" reveals an input on the join screen.
-const restoreToggle = $<HTMLButtonElement>("restore-toggle");
 const restoreRow = $<HTMLDivElement>("restore-row");
 const restoreInput = $<HTMLInputElement>("restore-input");
-restoreToggle.addEventListener("click", () => {
-  const show = restoreRow.hidden;
-  restoreRow.hidden = !show;
-  if (show) restoreInput.focus();
+$<HTMLButtonElement>("restore-toggle").addEventListener("click", () => {
+  restoreRow.hidden = !restoreRow.hidden;
+  if (!restoreRow.hidden) restoreInput.focus();
 });
 
 form.addEventListener("submit", async (event) => {
@@ -154,22 +210,14 @@ form.addEventListener("submit", async (event) => {
   joinButton.disabled = true;
   status.textContent = "Drifting into the plaza…";
   try {
-    identity = { name, colour }; // remembered for re-joining after a room visit
-    const room = await joinPlaza({ name, colour });
-    plazaRoom = room;
+    identity = { name, colour };
+    const room = await joinPlaza(identity);
     $("join").hidden = true;
     $("help").hidden = false;
     window.setTimeout(() => $("help").classList.add("gone"), 10_000);
-    $("chat").hidden = false;
     $("hud").hidden = false;
-    $("fishing").hidden = false;
-    // Register message handlers synchronously so the join-time wallet is not missed.
-    wireWalletAndShop(room);
-    wireFishing(room);
-    wireRooms(); // sets onVisitGhost before the scene is created
-    startGame(room);
-    wireChat(room);
-    wireSettings();
+    wireUi();
+    enterPlaza(room);
     startMusic(); // after the join gesture, honouring the mute preference
   } catch (error) {
     console.error(error);
@@ -178,295 +226,84 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// ---------- Worlds ----------
+
 function newGame(): Phaser.Game {
-  const game = new Phaser.Game({
+  currentGame?.destroy(true);
+  // The canvas always fills the window; each scene's camera zooms to cover it.
+  currentGame = new Phaser.Game({
     type: Phaser.AUTO,
     parent: "game",
-    width: PLAZA_WIDTH,
-    height: PLAZA_HEIGHT,
-    backgroundColor: "#0f0a22",
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    backgroundColor: "#19161d",
+    scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
   });
-  return game;
+  return currentGame;
 }
 
-function startGame(room: Awaited<ReturnType<typeof joinPlaza>>) {
-  currentGame?.destroy(true);
-  currentGame = newGame();
-  currentGame.scene.add("plaza", PlazaScene, true, { room, onVisit: onVisitGhost });
-  currentGame.canvas.setAttribute("tabindex", "0");
-  currentGame.canvas.focus();
+function focusCanvas() {
+  const canvas = currentGame?.canvas;
+  if (!canvas) return;
+  canvas.setAttribute("tabindex", "0");
+  canvas.focus();
 }
 
-function wireChat(room: PlazaRoom) {
-  const chatForm = $<HTMLFormElement>("chat-form");
-  const chatInput = $<HTMLInputElement>("chat-input");
-  const note = $<HTMLParagraphElement>("caretaker-note");
-  const resting = $<HTMLParagraphElement>("caretaker-resting");
-
-  chatForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const text = chatInput.value.trim();
-    if (!text) return;
-    sendChat(room, text);
-    chatInput.value = "";
-  });
-
-  // The Caretaker's private nudges and blocks, shown only to this player.
-  let noteTimer = 0;
-  onCaretakerNote(room, (n) => {
-    note.textContent = (n.kind === "block" ? "🕯️ " : "👻 ") + n.text;
-    note.hidden = false;
-    window.clearTimeout(noteTimer);
-    noteTimer = window.setTimeout(() => (note.hidden = true), 6000);
-  });
-
-  // "Caretaker is resting" banner follows the synced state. Polling is simplest
-  // and avoids the SDK's generic state-callback typing; the value changes rarely.
-  let lastResting: boolean | undefined;
-  window.setInterval(() => {
-    const value = room.state.caretakerResting === true;
-    if (value !== lastResting) {
-      lastResting = value;
-      resting.hidden = !value;
-    }
-  }, 1000);
+/** Show the plaza world and bind this room's server messages. */
+function enterPlaza(room: PlazaRoom) {
+  plazaRoom = room;
+  // Message handlers go on synchronously after join, so the join-time wallet is not missed.
+  bindPlazaMessages(room);
+  if (wornHat) sendSetHat(room, wornHat);
+  newGame().scene.add("plaza", PlazaScene, true, { room, onVisit: offerVisit, onTalk: talkToCaretaker });
+  focusCanvas();
+  $("fishing").hidden = false;
+  $("seance").hidden = false;
+  $("chat").hidden = false;
+  $("room-controls").hidden = true;
+  $("room-button").hidden = false;
+  editorButton.hidden = true;
 }
 
-// The fountain is the first obstacle; its centre is where you fish.
-const FOUNTAIN = OBSTACLES[0]!;
-const FOUNTAIN_CENTRE = { x: FOUNTAIN.x + FOUNTAIN.width / 2, y: FOUNTAIN.y + FOUNTAIN.height / 2 };
-const FISH_RANGE = 160; // how close a ghost must be to cast
-
-const owned = new Set<string>();
-let wornHat = ""; // the shop item id of the currently-worn hat, or ""
-let identity: { name: string; colour: number } = { name: "", colour: 0 };
-let plazaRoom: PlazaRoom | undefined;
-let roomClient: HauntedRoomClient | undefined;
-let currentGame: Phaser.Game | undefined;
-/** Set by wireRooms; lets the plaza scene offer a visit when a ghost is clicked. */
-let onVisitGhost: ((ownerPlayerId: number, name: string) => void) | undefined;
-
-function setCoins(n: number) {
-  const count = $<HTMLSpanElement>("coin-count");
-  const before = Number(count.textContent) || 0;
-  count.textContent = String(n);
-  if (n > before) {
-    // Restart the little bump animation each time coins go up.
-    const pill = $("coins");
-    pill.classList.remove("bump");
-    void pill.offsetWidth;
-    pill.classList.add("bump");
-  }
-}
-
-function wireWalletAndShop(room: PlazaRoom) {
-  const shopButton = $<HTMLButtonElement>("shop-button");
-  const shop = $<HTMLElement>("shop");
-  const list = $<HTMLUListElement>("shop-list");
-  const recoveryButton = $<HTMLButtonElement>("recovery-button");
-  const recovery = $<HTMLElement>("recovery");
-  const recoveryCode = $<HTMLParagraphElement>("recovery-code");
-
-  const renderShop = () => {
-    list.replaceChildren();
-    const coins = Number($<HTMLSpanElement>("coin-count").textContent) || 0;
-    let lastKind = "";
-    for (const item of SHOP_ITEMS) {
-      if (item.kind !== lastKind) {
-        lastKind = item.kind;
-        list.append(sectionTitle(item.kind === "hat" ? "Hats" : "Room decorations"));
-      }
-      const has = owned.has(item.id);
-      const li = itemCard(item, !has);
-      if (has) li.classList.add("owned");
-      if (wornHat === item.id) li.classList.add("wearing");
-      if (has) {
-        if (item.kind === "hat") {
-          // Owned hats can be worn or taken off.
-          const wear = document.createElement("button");
-          wear.type = "button";
-          const wearing = wornHat === item.id;
-          wear.textContent = wearing ? "Take off" : "Wear";
-          wear.addEventListener("click", () => {
-            wornHat = wearing ? "" : item.id;
-            sendSetHat(room, wornHat);
-            renderShop();
-          });
-          li.append(wear);
-        } else {
-          const tag = document.createElement("span");
-          tag.className = "tag";
-          tag.textContent = "Owned";
-          li.append(tag);
-        }
-      } else {
-        const buy = document.createElement("button");
-        buy.type = "button";
-        buy.textContent = coins < item.price ? `Need ${item.price - coins} more` : "Buy";
-        buy.disabled = coins < item.price;
-        buy.addEventListener("click", () => {
-          buy.disabled = true;
-          sendBuy(room, item.id);
-        });
-        li.append(buy);
-      }
-      list.append(li);
-    }
-  };
-
-  const shopModal = makeModal(shop);
-  const recoveryModal = makeModal(recovery);
-
-  shopButton.addEventListener("click", () => {
-    if (shopModal.isOpen) {
-      shopModal.close();
-    } else {
-      renderShop();
-      shopModal.open();
-    }
-  });
-  $<HTMLButtonElement>("shop-close").addEventListener("click", () => shopModal.close());
-  // The recovery button lives in Settings; swap one dialog for the other.
-  recoveryButton.addEventListener("click", () => {
-    if (!$("settings").hidden) $<HTMLButtonElement>("settings-close").click();
-    recoveryModal.open();
-  });
-  $<HTMLButtonElement>("recovery-close").addEventListener("click", () => recoveryModal.close());
-  $<HTMLButtonElement>("recovery-copy").addEventListener("click", () => {
-    void navigator.clipboard?.writeText(recoveryCode.textContent ?? "").then(() => showToast("Code copied"));
-  });
-
+function bindPlazaMessages(room: PlazaRoom) {
   onWallet(room, (wallet) => {
-    setCoins(wallet.coins);
     owned.clear();
     for (const id of wallet.items) owned.add(id);
-    recoveryCode.textContent = wallet.recoveryCode;
-    saveRecoveryCode(wallet.recoveryCode);
-    if (!shop.hidden) renderShop();
+    recoveryCode = wallet.recoveryCode;
+    $("recovery-code").textContent = recoveryCode;
+    saveRecoveryCode(recoveryCode);
+    setCoins(wallet.coins);
   });
-
   onBought(room, (msg) => {
     owned.add(msg.itemId);
     setCoins(msg.balance);
-    if (!shop.hidden) renderShop();
+    renderShop();
+    showToast(`Bought ${SHOP_ITEMS.find((i) => i.id === msg.itemId)?.name ?? "it"}!`);
   });
-
   onDenied(room, (msg) => {
-    // Re-render to restore the button state; a quick note is enough.
-    if (!shop.hidden) renderShop();
+    renderShop();
     showToast(msg.reason === "owned" ? "You already own that." : "Not enough coins yet.");
   });
-}
-
-function wireFishing(room: PlazaRoom) {
-  const prompt = $<HTMLButtonElement>("fish-prompt");
-  const roundPanel = $<HTMLElement>("fish-round");
-  const timer = $<HTMLParagraphElement>("fish-timer");
-  const result = $<HTMLParagraphElement>("fish-result");
-  const marker = $<HTMLDivElement>("fish-marker");
-  const castButton = $<HTMLButtonElement>("fish-cast");
-  const stopButton = $<HTMLButtonElement>("fish-stop");
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  let active = false;
-  let endsAt = 0;
-  let markerRaf = 0;
-  let markerPos = 0; // 0..1 across the bar
-
-  const nearFountain = (): boolean => {
-    const me = room.state.ghosts?.get(room.sessionId);
-    if (!me) return false;
-    return Math.hypot(me.x - FOUNTAIN_CENTRE.x, me.y - FOUNTAIN_CENTRE.y) <= FISH_RANGE;
-  };
-
-  // Show the "cast a line" prompt only when near the fountain and not already fishing.
-  window.setInterval(() => {
-    prompt.hidden = active || !nearFountain();
-  }, 300);
-
-  const animateMarker = (t: number) => {
-    // A triangle wave 0..1..0; reduced motion uses a slow step instead.
-    const period = reducedMotion ? 2400 : 1100;
-    const phase = (t % period) / period;
-    markerPos = phase < 0.5 ? phase * 2 : 2 - phase * 2;
-    marker.style.left = `${markerPos * 100}%`;
-    markerRaf = requestAnimationFrame(animateMarker);
-  };
-
-  // Accuracy 1 at bar centre (0.5), falling to 0 at the edges of the target zone.
-  const accuracyFrom = (pos: number): number => Math.max(0, 1 - Math.abs(pos - 0.5) / 0.1);
-
-  const startRound = () => {
-    active = true;
-    prompt.hidden = true;
-    roundPanel.hidden = false;
-    result.textContent = "Click Cast when the marker hits the glowing zone.";
-    castButton.disabled = false;
-    castButton.focus();
-    markerRaf = requestAnimationFrame(animateMarker);
-    startFishing(room);
-  };
-
-  const stopRound = () => {
-    if (!active) return;
-    active = false;
-    cancelAnimationFrame(markerRaf);
-    roundPanel.hidden = true;
-    endFishing(room);
-  };
-
-  prompt.addEventListener("click", startRound);
-  stopButton.addEventListener("click", stopRound);
-  castButton.addEventListener("click", () => {
-    if (!active) return;
-    sendCast(room, accuracyFrom(markerPos));
+  onCaretakerNote(room, (n) => showCaretakerNote(n.text));
+  onFriends(room, (list) => {
+    friends = list.friends;
+    renderFriends();
   });
-
-  onFishStarted(room, (msg) => {
-    endsAt = Date.now() + msg.roundMs;
-  });
-
-  onFishCatch(room, (msg) => {
-    const kind = getCatch(msg.catchId);
-    result.textContent = `You caught ${kind.name}! +${msg.coins} 🪙`;
-  });
-
+  requestFriends(room);
+  onFishStarted(room, (msg) => fishing.started(msg.roundMs));
+  onFishCatch(room, (msg) => fishing.caught(getCatch(msg.catchId).name, msg.coins));
+  onSeanceShow(room, (msg) => seance.show(msg));
+  onSeanceResult(room, (msg) => seance.result(msg));
   onFishEnded(room, (msg) => {
-    active = false;
-    cancelAnimationFrame(markerRaf);
-    roundPanel.hidden = true;
+    fishing.ended();
     setCoins(msg.balance);
   });
-
-  // Tick the visible timer; auto-stop when the round's time is up.
-  window.setInterval(() => {
-    if (!active) return;
-    const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-    timer.textContent = `${left}s`;
-    if (left <= 0) stopRound();
-  }, 250);
 }
 
-function wireSettings() {
-  const settings = $<HTMLElement>("settings");
-  const motion = $<HTMLInputElement>("set-reduce-motion");
-  const mute = $<HTMLInputElement>("set-mute");
-
-  motion.checked = reduceMotion();
-  mute.checked = muted();
-
-  motion.addEventListener("change", () => setReduceMotion(motion.checked));
-  mute.addEventListener("change", () => {
-    setMuted(mute.checked);
-    applyMute();
-  });
-
-  const settingsModal = makeModal(settings);
-  $<HTMLButtonElement>("settings-button").addEventListener("click", () =>
-    settingsModal.isOpen ? settingsModal.close() : settingsModal.open(),
-  );
-  $<HTMLButtonElement>("settings-close").addEventListener("click", () => settingsModal.close());
+let noteTimer = 0;
+function showCaretakerNote(text: string) {
+  $("caretaker-text").textContent = text;
+  $("caretaker-note").hidden = false;
+  window.clearTimeout(noteTimer);
+  noteTimer = window.setTimeout(() => ($("caretaker-note").hidden = true), 6000);
 }
 
 /** My own player id, read from my ghost's synced ownerId in the plaza. */
@@ -476,128 +313,682 @@ function myPlayerId(): number | null {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
-function wireRooms() {
-  const roomButton = $<HTMLButtonElement>("room-button");
-  const roomControls = $<HTMLDivElement>("room-controls");
-  const roomOwner = $<HTMLParagraphElement>("room-owner");
-  const returnButton = $<HTMLButtonElement>("return-plaza");
-  const editor = $<HTMLElement>("room-editor");
-  const editorModal = makeModal(editor);
-  const decorList = $<HTMLUListElement>("decor-list");
-  const editorButton = document.createElement("button");
-  editorButton.type = "button";
-  editorButton.className = "secondary with-icon";
-  editorButton.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/></svg>Decorate`;
+// ---------- Talking to the Caretaker (scripted, client-side; no chat is sent) ----------
 
-  roomButton.addEventListener("click", () => {
+const STORIES = [
+  "Long ago a ghost lost her favourite hat in the fountain. She fished for a hundred years. The fish say she still checks every Tuesday.",
+  "The clock tower has leaned since the night it laughed too hard at one of my jokes. It has never told me which one.",
+  "Once, every lantern in town went out at once. A tiny ghost hummed until they lit again. Kindness is the oldest light we have.",
+];
+
+const TALK_TOPICS: { ask: string; answer: () => string }[] = [
+  { ask: "Who are you?", answer: () => "I'm the Caretaker. I've tended these lanterns for three hundred years, give or take a century. Every ghost who floats in is my guest." },
+  { ask: "How do I earn coins?", answer: () => "Float to the fountain and cast a line. Reel when the marker is in the zone. Each hit makes it faster; land one at full speed and you've caught something." },
+  { ask: "What can I buy?", answer: () => "Hats for your head and trinkets for your room. Buy a decoration, then visit My room and press Decorate to place it." },
+  { ask: "Why do you read the chat?", answer: () => "I read every message before the town hears it, so kindness travels and cruelty doesn't. If I stop you, it's only a quiet word between us, never in public." },
+  { ask: "Tell me a story.", answer: () => STORIES[Math.floor(Math.random() * STORIES.length)]! },
+];
+
+function plazaScene(): PlazaScene | undefined {
+  const scene = currentGame?.scene.getScene("plaza");
+  return scene instanceof PlazaScene ? scene : undefined;
+}
+
+/** The Caretaker speaks in its bubble; the same line goes to screen readers. */
+function caretakerSays(line: string) {
+  plazaScene()?.caretakerSay(line);
+  $("talk-said").textContent = line;
+}
+
+/** Swap the chat bar for reply options. Ends on Goodbye, Esc, or walking off. */
+function talkToCaretaker() {
+  if (!$("talk").hidden) return;
+  const name = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId)?.name ?? "little one";
+  caretakerSays(`Ah, ${name}. What would you like to know?`);
+  const topics = $("talk-topics");
+  topics.replaceChildren(
+    ...TALK_TOPICS.map((t) => button(t.ask, () => caretakerSays(t.answer()), "secondary")),
+    button("Goodbye", () => endTalk(true), "ghost-btn bye"),
+  );
+  $("chat-form").hidden = true;
+  $("talk").hidden = false;
+  plazaScene()?.setCaretakerTalking(true); // it stops drifting while you talk
+  topics.querySelector("button")?.focus();
+}
+
+function endTalk(sayBye = false) {
+  if ($("talk").hidden) return;
+  if (sayBye) caretakerSays("Float safely, little one.");
+  plazaScene()?.setCaretakerTalking(false);
+  $("talk").hidden = true;
+  $("chat-form").hidden = false;
+  focusCanvas();
+}
+
+// ---------- Friends ----------
+
+let friends: FriendView[] = [];
+const isFriend = (playerId: number) => friends.some((f) => f.playerId === playerId);
+
+function renderFriends() {
+  const online = friends.filter((f) => f.online).length;
+  const badge = $("friends-online");
+  badge.textContent = String(online);
+  badge.hidden = online === 0;
+  badge.setAttribute("aria-label", `${online} online`);
+
+  const list = $<HTMLUListElement>("friends-list");
+  list.replaceChildren();
+  if (friends.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "No friends yet. Click a ghost in the plaza to add one.";
+    list.append(li);
+  }
+  // Online first, then by name.
+  const sorted = [...friends].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+  for (const f of sorted) {
+    const li = document.createElement("li");
+    if (f.online) li.classList.add("online");
+    const who = document.createElement("div");
+    who.className = "who";
+    const name = document.createElement("b");
+    name.textContent = f.name || "A ghost";
+    const state = document.createElement("span");
+    state.className = "state";
+    state.textContent = f.online ? "Online" : "Away";
+    who.append(name, state);
+    li.append(
+      who,
+      button("Visit room", () => {
+        modals.friends.close();
+        void visitRoom(f.playerId, false);
+      }),
+      button("Remove", () => plazaRoom && removeFriend(plazaRoom, f.playerId), "ghost-btn"),
+    );
+    list.append(li);
+  }
+  syncFriendToggle();
+}
+
+/** The Add/Remove friend button on the ghost card follows the current list. */
+function syncFriendToggle() {
+  const toggle = $<HTMLButtonElement>("friend-toggle");
+  toggle.textContent = pendingVisit !== null && isFriend(pendingVisit) ? "Remove friend" : "Add friend";
+}
+
+let pendingVisit: number | null = null;
+/** Clicking another ghost opens its player card. */
+function offerVisit(ownerPlayerId: number, name: string) {
+  // Two tabs in one browser share a guest id, so they are the same player.
+  const self = ownerPlayerId === myPlayerId();
+  pendingVisit = self ? null : ownerPlayerId;
+  $("visit-title").textContent = name;
+  $("visit-text").textContent = self
+    ? "That's you, in another tab or window. Use My room to visit your own room."
+    : `Drop in on ${name}'s haunted room, or add them as a friend.`;
+  $("visit-go").hidden = self;
+  $("friend-toggle").hidden = self;
+  syncFriendToggle();
+  modals.visit.open();
+}
+
+let switching = false;
+async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
+  if (switching) return;
+  switching = true;
+  try {
+    fishing.stop();
+    seance.stop();
+    endTalk();
+    modals.shop.close();
+    const leaving = plazaRoom;
+    plazaRoom = undefined;
+    await leaving?.leave();
+    roomClient = await joinHauntedRoom(identity, ownerPlayerId);
+    newGame().scene.add("room", RoomScene, true, { room: roomClient, isOwner });
+    focusCanvas();
+    // Chat and the mini-games live in the plaza only.
+    $("fishing").hidden = true;
+    $("seance").hidden = true;
+    $("chat").hidden = true;
+    $("room-controls").hidden = false;
+    $("room-owner").textContent = isOwner ? "Your haunted room" : `${roomClient.state.ownerName}'s room`;
+    $("room-button").hidden = true;
+    editorButton.hidden = !isOwner;
+  } catch (err) {
+    console.error(err);
+    showToast("That room's door is stuck. Back to the plaza.");
+    await returnToPlaza(true);
+  } finally {
+    switching = false;
+  }
+}
+
+async function returnToPlaza(force = false) {
+  if (switching && !force) return;
+  switching = true;
+  modals.editor.close();
+  try {
+    await roomClient?.leave();
+  } catch (err) {
+    console.error("room leave failed (continuing):", err);
+  }
+  roomClient = undefined;
+  try {
+    enterPlaza(await joinPlaza(identity));
+  } catch (err) {
+    console.error(err);
+    showToast("The plaza gates are stuck. Reload the page to try again.");
+  } finally {
+    switching = false;
+  }
+}
+
+// ---------- One-time UI wiring ----------
+
+const editorButton = document.createElement("button");
+editorButton.type = "button";
+editorButton.className = "secondary";
+editorButton.hidden = true;
+editorButton.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/></svg><span class="label">Decorate</span>`;
+editorButton.setAttribute("aria-label", "Decorate");
+
+const modals = {
+  shop: makeModal($("shop")),
+  recovery: makeModal($("recovery")),
+  settings: makeModal($("settings")),
+  visit: makeModal($("visit-prompt"), () => (pendingVisit = null)),
+  editor: makeModal($("room-editor")),
+  friends: makeModal($("friends")),
+};
+const toggle = (m: (typeof modals)[keyof typeof modals]) => (m.isOpen ? m.close() : m.open());
+
+function renderShop() {
+  const list = $<HTMLUListElement>("shop-list");
+  list.replaceChildren();
+  let lastKind = "";
+  for (const item of SHOP_ITEMS) {
+    if (item.kind !== lastKind) {
+      lastKind = item.kind;
+      list.append(sectionTitle(item.kind === "hat" ? "Hats" : "Room decorations"));
+    }
+    const has = owned.has(item.id);
+    const li = itemCard(item, !has);
+    if (has) li.classList.add("owned");
+    if (wornHat === item.id) li.classList.add("wearing");
+    if (has && item.kind === "hat") {
+      const wearing = wornHat === item.id;
+      li.append(
+        button(wearing ? "Take off" : "Wear", () => {
+          if (!plazaRoom) return;
+          wornHat = wearing ? "" : item.id;
+          sendSetHat(plazaRoom, wornHat);
+          renderShop();
+        }, wearing ? "secondary" : ""),
+      );
+    } else if (has) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = "Owned";
+      li.append(tag);
+    } else {
+      const buy = button(coins < item.price ? `Need ${item.price - coins} more` : "Buy", () => {
+        if (!plazaRoom) return;
+        buy.disabled = true;
+        sendBuy(plazaRoom, item.id);
+      });
+      buy.disabled = coins < item.price || !plazaRoom;
+      li.append(buy);
+    }
+    list.append(li);
+  }
+}
+
+function renderDecorList() {
+  const list = $<HTMLUListElement>("decor-list");
+  list.replaceChildren();
+  const ownedDecor = SHOP_ITEMS.filter((i) => i.kind === "decoration" && owned.has(i.id));
+  if (ownedDecor.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "Buy decorations in the shop first.";
+    list.append(li);
+    return;
+  }
+  for (const item of ownedDecor) {
+    const li = itemCard(item, false);
+    // The decoration follows the cursor; the next click in the room puts it there (Esc cancels).
+    li.append(
+      button("Place", () => {
+        const scene = currentGame?.scene.getScene("room");
+        if (scene instanceof RoomScene) {
+          scene.startPlacing(item.id);
+          showToast("Click anywhere in the room to place it. Esc to cancel.");
+          focusCanvas();
+        } else if (roomClient) {
+          placeItem(roomClient, item.id, PLAZA_WIDTH / 2, PLAZA_HEIGHT / 2);
+        }
+      }),
+    );
+    list.append(li);
+  }
+}
+
+let wired = false;
+function wireUi() {
+  if (wired) return;
+  wired = true;
+
+  $("hud").append(editorButton);
+  editorButton.addEventListener("click", () => {
+    renderDecorList();
+    toggle(modals.editor);
+  });
+
+  $("shop-button").addEventListener("click", () => {
+    renderShop();
+    toggle(modals.shop);
+  });
+  $("shop-close").addEventListener("click", () => modals.shop.close());
+
+  $("room-button").addEventListener("click", () => {
     const id = myPlayerId();
     if (id !== null) void visitRoom(id, true);
   });
-  returnButton.addEventListener("click", () => void returnToPlaza());
-
-  // Clicking another ghost in the plaza offers a visit to their room.
-  const visitPanel = $<HTMLElement>("visit-prompt");
-  const visitText = $<HTMLParagraphElement>("visit-text");
-  const visitModal = makeModal(visitPanel);
-  let pendingVisit: number | null = null;
-  onVisitGhost = (ownerPlayerId, name) => {
-    if (ownerPlayerId === myPlayerId()) return; // that's your own ghost
-    pendingVisit = ownerPlayerId;
-    visitText.textContent = `Drop in on ${name}'s haunted room?`;
-    visitModal.open();
-  };
-  $<HTMLButtonElement>("visit-cancel").addEventListener("click", () => {
-    pendingVisit = null;
-    visitModal.close();
-  });
-  $<HTMLButtonElement>("visit-go").addEventListener("click", () => {
+  $("return-plaza").addEventListener("click", () => void returnToPlaza());
+  $("visit-cancel").addEventListener("click", () => modals.visit.close());
+  $("visit-go").addEventListener("click", () => {
     const target = pendingVisit;
-    pendingVisit = null;
-    visitModal.close();
+    modals.visit.close();
     if (target !== null) void visitRoom(target, false);
   });
-  $<HTMLButtonElement>("room-editor-close").addEventListener("click", () => editorModal.close());
-  editorButton.addEventListener("click", () => {
-    renderDecorList();
-    editorModal.isOpen ? editorModal.close() : editorModal.open();
+  $("room-editor-close").addEventListener("click", () => modals.editor.close());
+  $("talk").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") endTalk();
   });
 
-  const renderDecorList = () => {
-    if (!roomClient) return;
-    decorList.replaceChildren();
-    const ownedDecor = SHOP_ITEMS.filter((i) => i.kind === "decoration" && owned.has(i.id));
-    if (ownedDecor.length === 0) {
-      const li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = "Buy decorations in the shop first.";
-      decorList.append(li);
-      return;
+  $("friends-button").addEventListener("click", () => {
+    if (plazaRoom) requestFriends(plazaRoom); // refresh who's online
+    renderFriends();
+    toggle(modals.friends);
+  });
+  $("friends-close").addEventListener("click", () => modals.friends.close());
+  $("friend-toggle").addEventListener("click", () => {
+    if (pendingVisit === null || !plazaRoom) return;
+    const adding = !isFriend(pendingVisit);
+    (adding ? addFriend : removeFriend)(plazaRoom, pendingVisit);
+    showToast(adding ? `Added ${$("visit-title").textContent} as a friend` : "Removed from friends");
+  });
+  // Keep online dots fresh while in the plaza.
+  window.setInterval(() => plazaRoom && requestFriends(plazaRoom), 20_000);
+
+  // Settings, with the recovery code one level down.
+  const motion = $<HTMLInputElement>("set-reduce-motion");
+  const mute = $<HTMLInputElement>("set-mute");
+  motion.checked = reduceMotion();
+  mute.checked = muted();
+  motion.addEventListener("change", () => setReduceMotion(motion.checked));
+  mute.addEventListener("change", () => {
+    setMuted(mute.checked);
+    applyMute();
+  });
+  $("settings-button").addEventListener("click", () => toggle(modals.settings));
+  $("settings-close").addEventListener("click", () => modals.settings.close());
+  $("recovery-button").addEventListener("click", () => {
+    modals.settings.close();
+    modals.recovery.open();
+  });
+  $("recovery-close").addEventListener("click", () => modals.recovery.close());
+  $("recovery-copy").addEventListener("click", () => {
+    void navigator.clipboard?.writeText(recoveryCode).then(() => showToast("Code copied"));
+  });
+
+  // Chat goes to the current plaza room. Esc hands the keyboard back to the game.
+  const chatInput = $<HTMLInputElement>("chat-input");
+  $<HTMLFormElement>("chat-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text || !plazaRoom) return;
+    sendChat(plazaRoom, text);
+    chatInput.value = "";
+  });
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      chatInput.blur();
+      focusCanvas();
     }
-    for (const item of ownedDecor) {
-      const li = itemCard(item, false);
-      const place = document.createElement("button");
-      place.type = "button";
-      place.textContent = "Place";
-      place.addEventListener("click", () => {
-        // Drop near the centre; the owner then drags it where they like.
-        if (roomClient) placeItem(roomClient, item.id, PLAZA_WIDTH / 2, PLAZA_HEIGHT / 2);
-      });
-      li.append(place);
-      decorList.append(li);
-    }
+  });
+
+  // "Caretaker is resting" follows synced state; it changes rarely, so polling is fine.
+  window.setInterval(() => {
+    $("caretaker-resting").hidden = plazaRoom?.state.caretakerResting !== true;
+  }, 1000);
+
+  fishing.wire();
+  seance.wire();
+}
+
+// ---------- Ghost Fishing ----------
+//
+// Each hit inside the zone speeds the reel up a tier and moves the zone.
+// A miss drops back to the slowest tier. A hit at top speed lands a catch:
+// only then is a cast sent, and the server rolls the catch from the accuracy.
+
+const FOUNTAIN = OBSTACLES[0]!;
+const FOUNTAIN_CENTRE = { x: FOUNTAIN.x + FOUNTAIN.width / 2, y: FOUNTAIN.y + FOUNTAIN.height / 2 };
+const FISH_RANGE = 160; // how close a ghost must be to cast
+/** Time for the marker to cross the bar once, per tier. The last tier lands the catch. */
+const TIER_SWEEP_MS = [1500, 1050, 760, 540];
+const ZONE_WIDTH = 0.16;
+const REEL_GAP_MS = 180; // ignore key-repeat and double taps
+
+const fishing = (() => {
+  const prompt = $<HTMLButtonElement>("fish-prompt");
+  const panel = $<HTMLElement>("fish-round");
+  const timer = $<HTMLParagraphElement>("fish-timer");
+  const result = $<HTMLParagraphElement>("fish-result");
+  const bar = $<HTMLDivElement>("fish-bar");
+  const zone = $<HTMLDivElement>("fish-zone");
+  const marker = $<HTMLDivElement>("fish-marker");
+  const tiers = $<HTMLDivElement>("fish-tiers");
+  const castButton = $<HTMLButtonElement>("fish-cast");
+
+  let active = false;
+  let endsAt = 0;
+  let raf = 0;
+  let lastFrame = 0;
+  let pos = 0; // 0..1 across the bar
+  let dir = 1;
+  let tier = 0;
+  let zoneLeft = 0.42;
+  let lastReel = 0;
+  let lastCastSent = 0;
+
+  tiers.replaceChildren(...TIER_SWEEP_MS.map(() => document.createElement("span")));
+
+  const say = (text: string, mood: "" | "good" | "bad" = "") => {
+    result.textContent = text;
+    result.className = `fish-result ${mood}`;
   };
 
-  async function visitRoom(ownerPlayerId: number, isOwner: boolean) {
-    try {
-      // Leave the plaza world and open the room world.
-      await plazaRoom?.leave();
-      roomClient = await joinHauntedRoom(identity, ownerPlayerId);
-      currentGame?.destroy(true);
-      currentGame = newGame();
-      currentGame.scene.add("room", RoomScene, true, { room: roomClient, isOwner });
-      currentGame.canvas.setAttribute("tabindex", "0");
-      currentGame.canvas.focus();
-      // Swap HUD affordances for room ones.
-      $("fishing").hidden = true;
-      roomControls.hidden = false;
-      roomOwner.textContent = isOwner ? "Your haunted room" : `${roomClient.state.ownerName}'s room`;
-      roomButton.hidden = true;
-      // Owner gets a Decorate button in the HUD.
-      if (isOwner && !editorButton.isConnected) $("hud").append(editorButton);
-      editorButton.hidden = !isOwner;
-    } catch (err) {
-      console.error(err);
+  const draw = () => {
+    zone.style.left = `${zoneLeft * 100}%`;
+    zone.style.width = `${ZONE_WIDTH * 100}%`;
+    tiers.querySelectorAll("span").forEach((s, i) => s.classList.toggle("on", i <= tier));
+    tiers.setAttribute("aria-label", `Reel speed ${tier + 1} of ${TIER_SWEEP_MS.length}`);
+  };
+
+  /** Move the zone somewhere new, at least a zone-width away from where it was. */
+  const moveZone = () => {
+    let next = zoneLeft;
+    for (let i = 0; i < 10 && Math.abs(next - zoneLeft) < ZONE_WIDTH; i++) next = 0.04 + Math.random() * (0.92 - ZONE_WIDTH);
+    zoneLeft = next;
+  };
+
+  const flash = (cls: "hit" | "miss") => {
+    bar.classList.remove("hit", "miss");
+    void bar.offsetWidth;
+    bar.classList.add(cls);
+    window.setTimeout(() => bar.classList.remove(cls), 250);
+  };
+
+  const frame = (t: number) => {
+    const dt = lastFrame ? Math.min(50, t - lastFrame) : 0;
+    lastFrame = t;
+    const sweep = TIER_SWEEP_MS[tier]! * (reduceMotion() ? 1.5 : 1);
+    pos += (dir * dt) / sweep;
+    if (pos >= 1) [pos, dir] = [1, -1];
+    if (pos <= 0) [pos, dir] = [0, 1];
+    marker.style.left = `${pos * 100}%`;
+    bar.dataset.inZone = pos >= zoneLeft && pos <= zoneLeft + ZONE_WIDTH ? "1" : "0";
+    raf = requestAnimationFrame(frame);
+  };
+
+  const reel = () => {
+    const room = plazaRoom;
+    if (!active || !room) return;
+    const now = performance.now();
+    if (now - lastReel < REEL_GAP_MS) return;
+    lastReel = now;
+
+    const inZone = pos >= zoneLeft && pos <= zoneLeft + ZONE_WIDTH;
+    if (!inZone) {
+      flash("miss");
+      say(tier > 0 ? "It slipped away. Back to a slow reel." : "Missed. Wait for the marker to cross the zone.", "bad");
+      tier = 0;
+    } else if (tier < TIER_SWEEP_MS.length - 1) {
+      flash("hit");
+      tier++;
+      say(tier === TIER_SWEEP_MS.length - 1 ? "Nearly there! One more at full speed." : "Hooked! Faster now…", "good");
+    } else {
+      flash("hit");
+      const centre = zoneLeft + ZONE_WIDTH / 2;
+      const accuracy = Math.max(0, 1 - Math.abs(pos - centre) / (ZONE_WIDTH / 2));
+      // Respect the server's cast cooldown so a fast landing is never dropped.
+      const wait = Math.max(0, lastCastSent + CAST_COOLDOWN_MS + 50 - Date.now());
+      window.setTimeout(() => {
+        if (!active || plazaRoom !== room) return;
+        lastCastSent = Date.now();
+        sendCast(room, accuracy);
+      }, wait);
+      say("Landing it…", "good");
+      tier = 0;
+    }
+    moveZone();
+    draw();
+  };
+
+  const start = () => {
+    if (!plazaRoom) return;
+    active = true;
+    tier = 0;
+    pos = 0;
+    dir = 1;
+    lastFrame = 0;
+    moveZone();
+    draw();
+    prompt.hidden = true;
+    panel.hidden = false;
+    timer.textContent = "60s";
+    say("Reel when the marker is inside the zone.");
+    castButton.focus();
+    raf = requestAnimationFrame(frame);
+    startFishing(plazaRoom);
+  };
+
+  const halt = () => {
+    active = false;
+    cancelAnimationFrame(raf);
+    panel.hidden = true;
+  };
+
+  return {
+    wire() {
+      prompt.addEventListener("click", start);
+      castButton.addEventListener("click", reel);
+      $("fish-stop").addEventListener("click", () => this.stop());
+      // Space reels, unless you are typing. preventDefault also stops a focused
+      // button from turning the same press into a second click.
+      document.addEventListener("keydown", (e) => {
+        if (!active || e.code !== "Space" || isTyping()) return;
+        e.preventDefault();
+        if (!e.repeat) reel();
+      });
+      // Offer fishing only near the fountain, and only in the plaza.
+      window.setInterval(() => {
+        const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+        const near = !!me && Math.hypot(me.x - FOUNTAIN_CENTRE.x, me.y - FOUNTAIN_CENTRE.y) <= FISH_RANGE;
+        prompt.hidden = active || !near;
+      }, 300);
+      window.setInterval(() => {
+        if (!active) return;
+        const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+        timer.textContent = `${left}s`;
+        if (left <= 0) this.stop();
+      }, 250);
+    },
+    started(roundMs: number) {
+      endsAt = Date.now() + roundMs;
+    },
+    caught(name: string, coinsWon: number) {
+      say(`You caught ${name}! +${coinsWon} coins`, "good");
+    },
+    ended() {
+      halt();
+    },
+    /** End the round (button, timer, or leaving the plaza). */
+    stop() {
+      if (!active) return;
+      halt();
+      if (plazaRoom) endFishing(plazaRoom);
+      focusCanvas();
+    },
+  };
+})();
+
+// ---------- Séance ----------
+//
+// The server sends a sequence; the runes light up one by one, then the player repeats
+// it by clicking or pressing 1-4. A wrong rune is sent at once, so the server ends it.
+
+const RUNE_ICONS: Record<(typeof RUNES)[number], string> = {
+  moon: `<path d="M15 4a8 8 0 1 0 5 13A7 7 0 0 1 15 4z"/>`,
+  star: `<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>`,
+  eye: `<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>`,
+  candle: `<path d="M12 3c2 2.5 2 4 0 5.5-2-1.5-2-3 0-5.5zM9 10h6v11H9z"/>`,
+};
+
+const SEANCE_LINES: Record<SeanceEndReason, string> = {
+  wrong: "The candles gutter. The spirits lost the thread.",
+  timeout: "The spirits grew tired of waiting.",
+  complete: "A perfect séance! The spirits are delighted.",
+  left: "You step out of the circle.",
+};
+
+const seance = (() => {
+  const prompt = $<HTMLButtonElement>("seance-prompt");
+  const panel = $<HTMLElement>("seance-round");
+  const count = $<HTMLParagraphElement>("seance-count");
+  const status = $<HTMLParagraphElement>("seance-status");
+  const runeBox = $<HTMLDivElement>("seance-runes");
+
+  let active = false;
+  let sequence: number[] = [];
+  let answer: number[] = [];
+  let showing = false;
+  let timers: number[] = [];
+
+  const runes = RUNES.map((name, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "rune";
+    b.setAttribute("aria-label", name);
+    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">${RUNE_ICONS[name]}</svg><kbd>${i + 1}</kbd>`;
+    b.addEventListener("click", () => press(i));
+    return b;
+  });
+  runeBox.replaceChildren(...runes);
+
+  const setEnabled = (on: boolean) => runes.forEach((r) => (r.disabled = !on));
+  const clearTimers = () => {
+    timers.forEach((t) => window.clearTimeout(t));
+    timers = [];
+  };
+  const flash = (i: number, ms: number) => {
+    runes[i]!.classList.add("lit");
+    timers.push(window.setTimeout(() => runes[i]!.classList.remove("lit"), ms));
+  };
+
+  /** Light the runes in order, then hand over to the player. */
+  const play = (seq: number[]) => {
+    showing = true;
+    setEnabled(false);
+    status.textContent = "Watch the runes…";
+    const on = runeShowMs(seq.length);
+    seq.forEach((r, k) => timers.push(window.setTimeout(() => flash(r, on), 500 + k * (on + 200))));
+    timers.push(
+      window.setTimeout(() => {
+        showing = false;
+        setEnabled(true);
+        status.textContent = "Your turn. Repeat the runes.";
+        runes[0]!.focus();
+      }, 500 + seq.length * (on + 200)),
+    );
+  };
+
+  function press(i: number) {
+    if (!active || showing || !plazaRoom) return;
+    flash(i, 180);
+    answer.push(i);
+    const wrong = answer[answer.length - 1] !== sequence[answer.length - 1];
+    // Send as soon as it's complete or wrong; the server decides either way.
+    if (wrong || answer.length === sequence.length) {
+      setEnabled(false);
+      answerSeance(plazaRoom, answer);
+      if (!wrong) status.textContent = "The spirits stir…";
     }
   }
 
-  async function returnToPlaza() {
-    editorModal.close();
-    // Leaving the room shouldn't block returning; ignore a noisy leave.
-    try {
-      await roomClient?.leave();
-    } catch (err) {
-      console.error("room leave failed (continuing):", err);
-    }
-    roomClient = undefined;
-    try {
-      const room = await joinPlaza(identity);
-      plazaRoom = room;
-      // Re-wear the hat the player had on.
-      if (wornHat) sendSetHat(room, wornHat);
-      wireWalletAndShop(room);
-      wireFishing(room);
-      startGame(room);
-      wireChat(room);
-    } catch (err) {
-      console.error(err);
-    }
-    // Restore the plaza HUD regardless, so the player is never stuck.
-    roomControls.hidden = true;
-    roomButton.hidden = false;
-    editorButton.hidden = true;
-    $("fishing").hidden = false;
-  }
-}
+  const halt = () => {
+    active = false;
+    clearTimers();
+    runes.forEach((r) => r.classList.remove("lit"));
+    panel.hidden = true;
+  };
+
+  return {
+    wire() {
+      prompt.addEventListener("click", () => {
+        if (!plazaRoom) return;
+        active = true;
+        prompt.hidden = true;
+        panel.hidden = false;
+        count.textContent = "Round 1";
+        status.textContent = "The candles flicker…";
+        setEnabled(false);
+        startSeance(plazaRoom);
+      });
+      $("seance-stop").addEventListener("click", () => this.stop());
+      // 1-4 press runes, unless you're typing.
+      document.addEventListener("keydown", (e) => {
+        if (!active || isTyping()) return;
+        const n = Number(e.key);
+        if (Number.isInteger(n) && n >= 1 && n <= RUNES.length) {
+          e.preventDefault();
+          press(n - 1);
+        }
+      });
+      // Offer the séance only at the candle circle.
+      window.setInterval(() => {
+        const me = plazaRoom?.state.ghosts?.get(plazaRoom.sessionId);
+        const near = !!me && Math.hypot(me.x - SEANCE_SPOT.x, me.y - SEANCE_SPOT.y) <= SEANCE_RANGE;
+        prompt.hidden = active || !near;
+      }, 300);
+    },
+    show(msg: SeanceShow) {
+      if (!active) return;
+      clearTimers();
+      sequence = msg.sequence;
+      answer = [];
+      count.textContent = `Round ${msg.round}`;
+      play(sequence);
+    },
+    result(msg: SeanceResult) {
+      halt();
+      setCoins(msg.balance);
+      showToast(msg.coins > 0 ? `${SEANCE_LINES[msg.reason]} +${msg.coins} coins` : SEANCE_LINES[msg.reason]);
+      focusCanvas();
+    },
+    stop() {
+      if (!active) return;
+      halt();
+      if (plazaRoom) endSeance(plazaRoom);
+    },
+  };
+})();
+
+// ---------- Music ----------
 
 function music(): HTMLAudioElement {
   return $<HTMLAudioElement>("bg-music");

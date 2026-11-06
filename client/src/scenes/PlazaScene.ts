@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import { OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
+import { MESSAGE, OBSTACLES, PLAZA_HEIGHT, PLAZA_WIDTH, keysToTarget } from "@club-kiro/shared";
 import {
   LANTERNS,
+  SEANCE_CANDLES,
   caretakerSvg,
   ghostTextureKey,
   ghostTextures,
@@ -11,7 +12,8 @@ import {
   svgUrl,
   vignetteSvg,
 } from "../art";
-import { Bubble, glowTexture, groundShadow, nameTag } from "../ghostParts";
+import { Bubble, coverCamera, face, followMe, glowTexture, groundShadow, heldDirection, moveKeys, nameTag, type MoveKeys } from "../ghostParts";
+import { GHOST_HEAD_OFFSET_X } from "../art";
 import { sendMove, type GhostView, type PlazaRoom } from "../net";
 import { reduceMotion } from "../settings";
 
@@ -32,7 +34,8 @@ const CARETAKER_TIPS = [
   "Kind words keep the lanterns bright.",
 ];
 const TIP_EVERY_MS = 40_000;
-const BUBBLE_MS = 7_000;
+/** Long enough to read: a base plus time per word. */
+const bubbleMs = (text: string) => 3000 + text.split(/\s+/).length * 300;
 
 interface GhostSprite {
   container: Phaser.GameObjects.Container;
@@ -41,12 +44,13 @@ interface GhostSprite {
   shownHat: string;
   bubble: Bubble;
   shownBubble: string;
+  facing: number;
 }
 
 export class PlazaScene extends Phaser.Scene {
   private room!: PlazaRoom;
   private readonly sprites = new Map<string, GhostSprite>();
-  private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
+  private keys!: MoveKeys;
   private lastKeySend = 0;
   private wasKeyMoving = false;
   private reducedMotion = reduceMotion();
@@ -54,6 +58,7 @@ export class PlazaScene extends Phaser.Scene {
   private hauntingGlows: Phaser.GameObjects.Image[] = [];
   private onVisit?: (ownerPlayerId: number, name: string) => void;
   private caretaker!: Phaser.GameObjects.Container;
+  private caretakerBody!: Phaser.GameObjects.Image;
   private caretakerBubble!: Bubble;
   private caretakerAngle = 0.6;
   private bubbleTimer?: Phaser.Time.TimerEvent;
@@ -64,9 +69,12 @@ export class PlazaScene extends Phaser.Scene {
     super("plaza");
   }
 
-  init(data: { room: PlazaRoom; onVisit?: (ownerPlayerId: number, name: string) => void }) {
+  private onTalk?: () => void;
+
+  init(data: { room: PlazaRoom; onVisit?: (ownerPlayerId: number, name: string) => void; onTalk?: () => void }) {
     this.room = data.room;
     this.onVisit = data.onVisit;
+    this.onTalk = data.onTalk;
   }
 
   preload() {
@@ -78,30 +86,32 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   create() {
-    this.add.image(0, 0, "plaza").setOrigin(0, 0);
+    // Drawn 2px oversize so linear filtering never bleeds a light line along the edges.
+    this.add.image(-1, -1, "plaza").setOrigin(0, 0).setDisplaySize(PLAZA_WIDTH + 2, PLAZA_HEIGHT + 2);
     this.addLanternGlows();
     this.addAmbience();
     this.addCaretaker();
-    this.add.image(0, 0, "vignette").setOrigin(0, 0).setDepth(150000);
+    this.add.image(-1, -1, "vignette").setOrigin(0, 0).setDisplaySize(PLAZA_WIDTH + 2, PLAZA_HEIGHT + 2).setDepth(150000);
     this.addHauntingOverlay();
 
     // Ignore plaza clicks that start on a DOM overlay (e.g. the chat input),
     // or on another ghost (that click offers a room visit instead of walking).
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       const el = document.elementFromPoint(pointer.x, pointer.y);
-      if (el && el.closest("#chat, #hud, #room-controls")) return;
+      if (el && el.closest("#dock, #hud, #room-controls, .dialog")) return;
       if (this.input.hitTestPointer(pointer).length > 0) return; // clicked a ghost
       sendMove(this.room, { x: pointer.worldX, y: pointer.worldY });
     });
 
-    const kb = this.input.keyboard!;
-    const K = Phaser.Input.Keyboard.KeyCodes;
-    this.keys = {
-      up: kb.addKey(K.UP), down: kb.addKey(K.DOWN), left: kb.addKey(K.LEFT), right: kb.addKey(K.RIGHT),
-      w: kb.addKey(K.W), a: kb.addKey(K.A), s: kb.addKey(K.S), d: kb.addKey(K.D),
-    };
+    this.keys = moveKeys(this);
+    coverCamera(this, PLAZA_WIDTH, PLAZA_HEIGHT);
 
-    this.time.addEvent({ delay: TIP_EVERY_MS, loop: true, callback: () => this.caretakerSay(Phaser.Utils.Array.GetRandom(CARETAKER_TIPS)) });
+    this.time.addEvent({
+      delay: TIP_EVERY_MS,
+      loop: true,
+      // No unprompted tips mid-conversation.
+      callback: () => !this.caretakerTalking && this.caretakerSay(Phaser.Utils.Array.GetRandom(CARETAKER_TIPS)),
+    });
 
     this.room.onLeave(() => this.scene.pause());
   }
@@ -116,8 +126,12 @@ export class PlazaScene extends Phaser.Scene {
   // --- The Caretaker: a visible, client-side NPC that greets and gives tips ---
 
   private addCaretaker() {
-    const glow = this.add.image(0, 0, glowTexture(this)).setTint(0x7fe0c8).setAlpha(0.3).setScale(1.5).setBlendMode(Phaser.BlendModes.ADD);
-    const body = this.add.image(0, 0, "caretaker").setAlpha(0.95);
+    const glow = this.add.image(0, 0, glowTexture(this)).setTint(0x7fe0c8).setAlpha(0.18).setScale(0.8).setBlendMode(Phaser.BlendModes.ADD);
+    const body = this.add.image(0, 0, "caretaker");
+    this.caretakerBody = body;
+    // Click the Caretaker to talk. Being interactive also stops the click walking you there.
+    body.setInteractive({ useHandCursor: true });
+    body.on("pointerup", () => this.onTalk?.());
     const tag = nameTag(this, "The Caretaker", "#7fe0c8", -60, true);
     this.caretakerBubble = new Bubble(this, -78);
     this.caretaker = this.add.container(0, 0, [groundShadow(this, 58, 56), glow, body, tag, this.caretakerBubble.container]);
@@ -134,16 +148,26 @@ export class PlazaScene extends Phaser.Scene {
     this.caretaker.setDepth(this.caretaker.y);
   }
 
-  private driftCaretaker(dt: number) {
-    if (this.reducedMotion) return;
-    this.caretakerAngle += dt * 0.045;
-    this.placeCaretaker();
+  private caretakerTalking = false;
+
+  /** While you're talking to it, the Caretaker stays put so its bubble stays readable. */
+  setCaretakerTalking(on: boolean) {
+    this.caretakerTalking = on;
   }
 
-  private caretakerSay(text: string) {
+  private driftCaretaker(dt: number) {
+    if (this.reducedMotion || this.caretakerTalking) return;
+    this.caretakerAngle += dt * 0.045;
+    this.placeCaretaker();
+    // Moving round the loop, x changes as -sin(angle): face that way.
+    this.caretakerBody.setFlipX(Math.sin(this.caretakerAngle) > 0);
+  }
+
+  /** Show a line in the Caretaker's speech bubble for a few seconds. */
+  caretakerSay(text: string) {
     this.caretakerBubble.set(text);
     this.bubbleTimer?.remove();
-    this.bubbleTimer = this.time.delayedCall(BUBBLE_MS, () => this.caretakerBubble.set(""));
+    this.bubbleTimer = this.time.delayedCall(bubbleMs(text), () => this.caretakerBubble.set(""));
   }
 
   // --- Ambience ---
@@ -152,20 +176,25 @@ export class PlazaScene extends Phaser.Scene {
     const key = glowTexture(this);
     for (const l of LANTERNS) {
       // A warm pool of light on the ground, then the lamp's own glow.
-      this.add.image(l.x, l.y + 88, key).setTint(0xffcf7a).setAlpha(0.22).setScale(2.4, 0.8).setBlendMode(Phaser.BlendModes.ADD);
-      const glow = this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0.5).setScale(1.3).setBlendMode(Phaser.BlendModes.ADD);
+      this.add.image(l.x, l.y + 90, key).setTint(0xffc46b).setAlpha(0.16).setScale(1.1, 0.35).setBlendMode(Phaser.BlendModes.ADD);
+      const glow = this.add.image(l.x, l.y - 12, key).setTint(0xffc46b).setAlpha(0.3).setScale(0.75).setBlendMode(Phaser.BlendModes.ADD);
       if (this.reducedMotion) continue;
+      // A slow, small breathing rather than a flicker: real lamps don't pulse hard.
       this.tweens.add({
         targets: glow,
-        alpha: { from: 0.38, to: 0.62 },
-        duration: 500 + Math.random() * 700,
+        alpha: { from: 0.26, to: 0.34 },
+        duration: 1800 + Math.random() * 1400,
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
       });
     }
+    // Little candle flames around the séance circle.
+    for (const c of SEANCE_CANDLES) {
+      this.add.image(c.x, c.y - 20, key).setTint(0xffb84d).setAlpha(0.22).setScale(0.18).setBlendMode(Phaser.BlendModes.ADD);
+    }
     // The fountain water glows softly too.
-    this.add.image(FOUNTAIN_X, FOUNTAIN_Y + 20, key).setTint(0x7fe0c8).setAlpha(0.25).setScale(2.2, 1.1).setBlendMode(Phaser.BlendModes.ADD);
+    this.add.image(FOUNTAIN_X, FOUNTAIN_Y + 18, key).setTint(0x7fe0c8).setAlpha(0.14).setScale(1.1, 0.55).setBlendMode(Phaser.BlendModes.ADD);
   }
 
   /** Drifting fog banks and fireflies. Static fog only under reduced motion. */
@@ -176,7 +205,7 @@ export class PlazaScene extends Phaser.Scene {
         .image(150 + i * 320, 260 + (i % 2) * 300, key)
         .setTint(0xb9a7ff)
         .setAlpha(0.05)
-        .setScale(8, 2)
+        .setScale(4, 1)
         .setDepth(90000);
       if (!this.reducedMotion) {
         this.tweens.add({ targets: fog, x: fog.x + 220, duration: 26000 + i * 6000, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
@@ -187,7 +216,7 @@ export class PlazaScene extends Phaser.Scene {
       const fly = this.add
         .image(Phaser.Math.Between(40, PLAZA_WIDTH - 40), Phaser.Math.Between(180, PLAZA_HEIGHT - 40), key)
         .setTint(0xfff2a8)
-        .setScale(0.09)
+        .setScale(0.06)
         .setAlpha(0)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setDepth(90001);
@@ -221,7 +250,7 @@ export class PlazaScene extends Phaser.Scene {
     const key = glowTexture(this);
     for (const l of LANTERNS) {
       this.hauntingGlows.push(
-        this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0).setScale(2).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
+        this.add.image(l.x, l.y - 12, key).setTint(0xffcf7a).setAlpha(0).setScale(1).setBlendMode(Phaser.BlendModes.ADD).setDepth(200001),
       );
     }
   }
@@ -248,6 +277,7 @@ export class PlazaScene extends Phaser.Scene {
       const sprite = this.sprites.get(id) ?? this.spawnSprite(id, ghost);
       const c = sprite.container;
       const k = Math.min(1, dt * SMOOTHING);
+      sprite.facing = face(sprite.body, sprite.hat, ghost.x - c.x, sprite.facing);
       c.x += (ghost.x - c.x) * k;
       c.y += (ghost.y - c.y) * k;
       c.setDepth(c.y); // ghosts lower on screen draw in front
@@ -298,7 +328,7 @@ export class PlazaScene extends Phaser.Scene {
     const label = nameTag(this, ghost.name, isMe ? "#ffcf7a" : "#f4f1ff", -44, isMe);
     const bubble = new Bubble(this, -72);
     // Hat sits just above the ghost body; texture set in updateHat.
-    const hat = this.add.image(0, -30, hatTextureKey("hat-witch")).setVisible(false);
+    const hat = this.add.image(GHOST_HEAD_OFFSET_X, -30, hatTextureKey("hat-witch")).setVisible(false);
 
     const container = this.add.container(ghost.x, ghost.y, [groundShadow(this), body, hat, label, bubble.container]).setAlpha(0);
 
@@ -312,7 +342,8 @@ export class PlazaScene extends Phaser.Scene {
       // Body and hat bob together so the hat stays on.
       this.tweens.add({ targets: [body, hat], y: "-=6", duration: 1200, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     }
-    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, shownBubble: "" };
+    const sprite: GhostSprite = { container, body, hat, shownHat: "", bubble, shownBubble: "", facing: 1 };
+    if (isMe) followMe(this, container);
     this.updateHat(sprite, ghost.hat);
     this.sprites.set(id, sprite);
     return sprite;
@@ -335,9 +366,7 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   private handleKeys(time: number) {
-    const k = this.keys;
-    const dx = (k.right.isDown || k.d.isDown ? 1 : 0) - (k.left.isDown || k.a.isDown ? 1 : 0);
-    const dy = (k.down.isDown || k.s.isDown ? 1 : 0) - (k.up.isDown || k.w.isDown ? 1 : 0);
+    const { dx, dy } = heldDirection(this.keys);
     const me = this.room.state.ghosts?.get(this.room.sessionId);
     if (!me) return;
 
@@ -349,7 +378,7 @@ export class PlazaScene extends Phaser.Scene {
       this.wasKeyMoving = true;
     } else if (this.wasKeyMoving) {
       // Keys released: stop where we are instead of drifting to the look-ahead target.
-      sendMove(this.room, { x: me.x, y: me.y });
+      this.room.send(MESSAGE.stop);
       this.wasKeyMoving = false;
     }
   }

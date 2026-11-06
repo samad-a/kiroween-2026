@@ -1,6 +1,46 @@
 import Phaser from "phaser";
+import { GHOST_HEAD_OFFSET_X } from "./art";
+import { isTyping } from "./settings";
 
-// Shared drawing helpers for ghosts in the plaza and in rooms.
+// Shared drawing and input helpers for ghosts in the plaza and in rooms.
+
+export type MoveKeys = Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
+
+/** Movement keys without key capture, so typing W/A/S/D in the chat box still types. */
+export function moveKeys(scene: Phaser.Scene): MoveKeys {
+  const kb = scene.input.keyboard!;
+  const K = Phaser.Input.Keyboard.KeyCodes;
+  const add = (code: number) => kb.addKey(code, false);
+  return {
+    up: add(K.UP), down: add(K.DOWN), left: add(K.LEFT), right: add(K.RIGHT),
+    w: add(K.W), a: add(K.A), s: add(K.S), d: add(K.D),
+  };
+}
+
+/** The held direction, or none while the player is typing in a text box. */
+export function heldDirection(k: MoveKeys): { dx: number; dy: number } {
+  if (isTyping()) return { dx: 0, dy: 0 };
+  return {
+    dx: (k.right.isDown || k.d.isDown ? 1 : 0) - (k.left.isDown || k.a.isDown ? 1 : 0),
+    dy: (k.down.isDown || k.s.isDown ? 1 : 0) - (k.up.isDown || k.w.isDown ? 1 : 0),
+  };
+}
+
+/**
+ * Turn a ghost to face the way it is moving. `dx` is how far it still has to
+ * travel horizontally; tiny moves keep the current facing. Returns the facing.
+ */
+export function face(body: Phaser.GameObjects.Image, hat: Phaser.GameObjects.Image, dx: number, facing: number): number {
+  // A few pixels of dead zone, so a small correction never spins the ghost round.
+  if (Math.abs(dx) < 4) return facing;
+  const next = dx > 0 ? 1 : -1;
+  if (next !== facing) {
+    body.setFlipX(next < 0);
+    hat.setFlipX(next < 0);
+    hat.x = GHOST_HEAD_OFFSET_X * next;
+  }
+  return next;
+}
 
 export const UI_FONT = "Nunito, 'Segoe UI', sans-serif";
 const GLOW_KEY = "soft-glow";
@@ -8,17 +48,40 @@ const GLOW_KEY = "soft-glow";
 /** A white radial dot, tinted per use, for lantern light, fireflies and fog. */
 export function glowTexture(scene: Phaser.Scene): string {
   if (scene.textures.exists(GLOW_KEY)) return GLOW_KEY;
-  const size = 128;
+  const size = 256;
   const tex = scene.textures.createCanvas(GLOW_KEY, size, size)!;
   const ctx = tex.getContext();
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.35, "rgba(255,255,255,0.45)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
+  // A bell-shaped falloff (roughly Gaussian), so the light has no visible edge or bright core.
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    g.addColorStop(t, `rgba(255,255,255,${Math.exp(-4.5 * t * t) * (1 - t)})`);
+  }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   tex.refresh();
   return GLOW_KEY;
+}
+
+/**
+ * Fill the whole screen with the world: zoom until it covers the viewport, and keep
+ * the camera inside the world. On a screen shaped like the world you see all of it;
+ * on other shapes you see a slice that follows your ghost (see `followMe`).
+ */
+export function coverCamera(scene: Phaser.Scene, worldW: number, worldH: number) {
+  const cam = scene.cameras.main;
+  const apply = () => {
+    cam.setZoom(Math.max(scene.scale.width / worldW, scene.scale.height / worldH));
+    cam.setBounds(0, 0, worldW, worldH);
+  };
+  apply();
+  scene.scale.on("resize", apply);
+  scene.events.once("shutdown", () => scene.scale.off("resize", apply));
+}
+
+/** Point the camera at your own ghost, easing gently. */
+export function followMe(scene: Phaser.Scene, target: Phaser.GameObjects.Container) {
+  scene.cameras.main.startFollow(target, true, 0.12, 0.12);
 }
 
 /** A rounded pill name tag whose bottom edge sits at `bottomY`. */

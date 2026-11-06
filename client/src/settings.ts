@@ -51,3 +51,9 @@ export function onSettingsChange(fn: Listener): () => void {
 function notify(): void {
   for (const fn of listeners) fn();
 }
+
+/** True while the player is typing, so game keys (WASD, Space) leave the text alone. */
+export function isTyping(): boolean {
+  const el = document.activeElement;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+}
