@@ -8,6 +8,10 @@ check.log
 commit.log
 smoke.log
 tmp_*
+# Playwright MCP session logs and page snapshots (may hold chat text)
+.playwright-mcp/
+# Private planning doc
+*Roadmap.pdf
 .env
 .env.*
 !.env.example
